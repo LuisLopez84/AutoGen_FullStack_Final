@@ -11,11 +11,42 @@ Important: output ONLY valid JSON object, no extra text.`;
 }
 
 export function buildTransformPrompt({ recording, url, testData }) {
-  return `You are a senior Java automation engineer. Given this recording JSON exported by a simple page recorder (array of steps containing action, selector, value, and optional frame), generate a complete Maven Java project (Serenity + Screenplay) implementing the flow.
-Return a single JSON object mapping file paths to contents. Include pom.xml, serenity.conf, src/test/resources/features/*.feature, and Java classes (tasks, questions, pages, runners, utils).
-Base URL: ${url}
-Recording: ${JSON.stringify(recording)}
-TestData: ${JSON.stringify(testData)}
+  return `
+You are a senior Java automation engineer.
+Generate a complete Serenity BDD + Screenplay project in Java (Maven).
 
-Return ONLY a JSON object.`;
+IMPORTANT — SHADOW DOM SUPPORT:
+- The recording array includes steps with a property "shadow: true".
+- For these steps, generate Page Objects that use SHADOW DOM selectors.
+- Include a utility class "ShadowDomUtils.java" with helper methods to query inside shadowRoot.
+- When a selector path contains " >> ", interpret each segment as a shadow boundary.
+
+SHADOW DOM TRANSFORMATION RULE:
+- Example recording selector: "vaadin-form-layout >> vaadin-text-field >> input"
+- MUST be converted to Java code using:
+
+WebElement element = ShadowDomUtils.getShadowElement(
+    getDriver(),
+    "vaadin-form-layout",
+    "vaadin-text-field",
+    "input"
+);
+
+- Split the selector by " >> " and pass each segment as a string parameter.
+- Tasks and Page Objects MUST use this helper instead of By.cssSelector for shadow elements.
+
+PROJECT REQUIREMENTS:
+- Include Page Objects in src/test/java/.../ui
+- Include Tasks, Questions, Runners, Hooks
+- Include serenity.conf
+- Include Cucumber feature files (.feature)
+- Include utils/ShadowDomUtils.java
+- Base URL: ${url}
+
+RECORDING:
+${JSON.stringify(recording)}
+
+Return ONLY a JSON object mapping file paths to file contents.
+    `;
 }
+

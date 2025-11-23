@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import RecorderGuide from "./components/RecorderGuide.jsx";
 import RecordingUploader from "./components/RecordingUploader.jsx";
 import TransformPanel from "./components/TransformPanel.jsx";
+import RecorderPanel from "./components/RecorderPanel.jsx";
 
 const BACKEND = import.meta.env.VITE_BACKEND_BASE || "http://localhost:3000";
 
@@ -11,15 +12,17 @@ export default function App(){
 
   return (
     <div style={{fontFamily:'Inter, Arial', padding:20}}>
-      <h1>AutoGen — Grabador & Generador de Automatizaciones Serenity Screenplay</h1>
+      <h1>AutoGen — Recorder & Generator</h1>
       <div style={{display:'flex', gap:20}}>
         <div style={{flex:1}}>
           <RecorderGuide />
+          <RecorderPanel backend={BACKEND} />
+          <div style={{height:12}}/>
           <RecordingUploader onLoad={r=>setRecording(r)} />
         </div>
         <aside style={{width:420}}>
           <TransformPanel backend={BACKEND} recording={recording} onJob={(j)=>setJob(j)} />
-          {job && <div style={{marginTop:12}}><a href={`${BACKEND}${job.download}`} target='_blank'>Descargar ZIP</a></div>}
+          {job && <div style={{marginTop:12}}><a href={`${BACKEND}${job.download}`} target='_blank' rel="noreferrer">Descargar ZIP</a></div>}
         </aside>
       </div>
     </div>
