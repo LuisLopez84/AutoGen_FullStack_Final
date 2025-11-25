@@ -248,10 +248,55 @@ export default function RecorderPanel({ backend = "http://localhost:3000" }) {
         Si vas a grabar otra web, abre esa web en otra pestaña, abre la consola y pega:
       </p>
       <pre style={{ fontSize: 11, background: "#f6f6f6", padding: 8, borderRadius: 4, overflowX: "auto" }}>
-{`// (pegar en la consola de la pestaña que quieres grabar)
-window.__AUTOGEN_steps = [];
-// Copia y pega el contenido de la función handler desde este componente
-// (o usa la UI del frontend y abre la página a grabar en la misma pestaña)
+{`/* === INICIAR RECORDER MANUAL === */
+  window.__AUTOGEN_steps = [];
+
+  function sel(e){
+    if(!e) return '';
+    if(e.id) return '#'+e.id;
+    if(e.className && typeof e.className === 'string' && e.className.trim()){
+      return e.tagName.toLowerCase() + '.' + e.className.trim().split(/\s+/).join('.');
+    }
+    return e.tagName.toLowerCase();
+  }
+
+  function handler(ev){
+    try{
+      const t = ev.target;
+      if(!t) return;
+      const rect = t.getBoundingClientRect ? t.getBoundingClientRect() : { x: 0, y:0 };
+      const step = {
+        ts: new Date().toISOString(),
+        action: ev.type,
+        selector: sel(t),
+        tag: t.tagName,
+        value: (t.value !== undefined ? t.value : null),
+        x: rect.x || 0,
+        y: rect.y || 0
+      };
+      window.__AUTOGEN_steps.push(step);
+    }catch(e){}
+  }
+
+  ['click','change','input'].forEach(evt =>
+    document.addEventListener(evt, handler, true)
+  );
+
+  alert("Recorder active! When done, run saveRecording()");
+
+  /* === FUNCIÓN DE DESCARGA === */
+  function saveRecording(){
+    const data = JSON.stringify(window.__AUTOGEN_steps, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "autogen_recording_" + Date.now() + ".json";
+    a.click();
+    URL.revokeObjectURL(url);
+    alert("Grabación descargada en tu carpeta Descargas!");
+  }
+
 `}
       </pre>
     </div>
