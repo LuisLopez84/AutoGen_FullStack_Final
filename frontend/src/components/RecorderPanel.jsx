@@ -1,330 +1,211 @@
-// frontend/src/components/RecorderPanel.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React from "react";
 
-function computeSelector(el) {
-  if (!el) return "";
-  if (el.id) return `#${el.id}`;
-  if (el.className && typeof el.className === "string" && el.className.trim()) {
-    const classes = el.className.trim().split(/\s+/).join(".");
-    return `${el.tagName.toLowerCase()}.${classes}`;
-  }
-  let path = el.tagName.toLowerCase();
-  if (el.parentElement) {
-    const siblings = Array.from(el.parentElement.children).filter(c => c.tagName === el.tagName);
-    if (siblings.length > 1) {
-      const idx = siblings.indexOf(el) + 1;
-      path += `:nth-of-type(${idx})`;
-    }
-  }
-  return path;
-}
-
-export default function RecorderPanel({ backend = "http://localhost:3000" }) {
-  const [recording, setRecording] = useState(false);
-  const [stepsCount, setStepsCount] = useState(0);
-  const [steps, setSteps] = useState([]);
-  const handlersRef = useRef({});
-
-  // Textos editables para cada elemento
-  const [textos, setTextos] = useState({
-    titulo: "AutoGen QA Recorder",
-    estado: "Grabación Detenida",
-    pasos: "Pasos grabados: 0",
-    iniciar: "Iniciar Grabación",
-    detener: "Detener Grabación",
-    descargar: "Descargar JSON",
-    version: "Versión 1.1 - Shadow DOM Support"
-  });
-
-  useEffect(() => {
-    window.__AUTOGEN_steps = steps;
-    // Actualizar contador de pasos
-    setTextos(prev => ({
-      ...prev,
-      pasos: `Pasos grabados: ${steps.length}`
-    }));
-  }, [steps]);
-
-  function createHandler() {
-    return function handler(ev) {
-      try {
-        const t = ev.target;
-        if (!t) return;
-        if (t.closest && t.closest("[data-autogen-recorder-ignore]")) return;
-
-        const rect = t.getBoundingClientRect ? t.getBoundingClientRect() : { x: 0, y: 0 };
-        const step = {
-          ts: new Date().toISOString(),
-          action: ev.type,
-          selector: computeSelector(t),
-          tag: t.tagName,
-          value: (t.value !== undefined ? t.value : null),
-          x: rect.x || 0,
-          y: rect.y || 0,
-        };
-        setSteps(prev => {
-          const next = [...prev, step];
-          window.__AUTOGEN_steps = next;
-          setStepsCount(next.length);
-          return next;
-        });
-      } catch (e) {}
-    };
-  }
-
-  function startRecording() {
-    if (recording) return;
-    setSteps([]);
-    setStepsCount(0);
-    window.__AUTOGEN_steps = [];
-
-    const h = createHandler();
-    handlersRef.current = { handler: h };
-    ["click", "change", "input"].forEach(evt => document.addEventListener(evt, h, true));
-    setRecording(true);
-    window.__AUTOGEN_RECORDER = true;
-
-    // Actualizar estado
-    setTextos(prev => ({
-      ...prev,
-      estado: "🔴 Grabando...",
-      pasos: "Pasos grabados: 0"
-    }));
-
-    alert("Grabador activo. Realiza acciones en la página.");
-
-    // Shadow DOM support (mantener funcionalidad existente)
-    (function(){
-      if (window.__SHADOW_RECORDER__INIT) return;
-      window.__SHADOW_RECORDER__INIT = true;
-
-      const EVENTS = ["click", "change", "input"];
-      const processedRoots = new WeakSet();
-
-      function attachListeners(root) {
-        if (!root || processedRoots.has(root)) return;
-        processedRoots.add(root);
-        EVENTS.forEach(evt => root.addEventListener(evt, shadowRootHandler, true));
-      }
-
-      function shadowRootHandler(ev) {
-        try {
-          const t = ev.target;
-          const rect = t.getBoundingClientRect ? t.getBoundingClientRect() : { x: 0, y: 0 };
-          const step = {
-            ts: new Date().toISOString(),
-            action: ev.type,
-            selector: computeShadowSelector(t),
-            tag: t.tagName,
-            value: t.value !== undefined ? t.value : null,
-            x: rect.x || 0,
-            y: rect.y || 0,
-            shadow: true
-          };
-          window.__AUTOGEN_steps.push(step);
-          setSteps(prev => [...prev, step]);
-        } catch (err) {}
-      }
-
-      function computeShadowSelector(el) {
-        if (!el) return "";
-        let path = [];
-        let current = el;
-
-        while (current) {
-          const part = selectorFor(current);
-          path.unshift(part);
-          const root = current.getRootNode();
-          if (root && root.host) current = root.host;
-          else current = current.parentElement;
-        }
-        return path.join(" >> ");
-      }
-
-      function selectorFor(el) {
-        if (el.id) return `#${el.id}`;
-        if (el.className && typeof el.className === "string" && el.className.trim()) {
-          return el.tagName.toLowerCase() + "." + el.className.trim().split(/\s+/).join(".");
-        }
-        return el.tagName.toLowerCase();
-      }
-
-      function scanForShadowRoots(node) {
-        if (!node) return;
-        if (node.shadowRoot) {
-          attachListeners(node.shadowRoot);
-          scanForShadowRoots(node.shadowRoot);
-        }
-        if (node.children && node.children.length > 0) {
-          [...node.children].forEach(child => scanForShadowRoots(child));
-        }
-      }
-
-      const observer = new MutationObserver(mutations => {
-        for (const m of mutations) {
-          m.addedNodes.forEach(node => scanForShadowRoots(node));
-        }
-      });
-
-      observer.observe(document.documentElement, { childList: true, subtree: true });
-      attachListeners(document);
-      scanForShadowRoots(document.documentElement);
-    })();
-  }
-
-  function stopRecording() {
-    if (!recording) return;
-    const h = handlersRef.current.handler;
-    if (h) {
-      ["click", "change", "input"].forEach(evt => document.removeEventListener(evt, h, true));
-    }
-    handlersRef.current = {};
-    setRecording(false);
-    window.__AUTOGEN_RECORDER = false;
-
-    setTextos(prev => ({
-      ...prev,
-      estado: "Grabación Detenida"
-    }));
-
-    alert(`Grabación detenida. ${stepsCount} pasos capturados.`);
-  }
-
-  function downloadRecording() {
-    const data = JSON.stringify(steps, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const filename = `autogen_recording_${Date.now()}.json`;
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    alert("Grabación descargada exitosamente!");
-  }
-
-  // Manejar cambios en los textos editables
-  const handleTextChange = (campo, valor) => {
-    setTextos(prev => ({
-      ...prev,
-      [campo]: valor
-    }));
-  };
-
+export default function RecorderPanel() {
   return (
-    <div className="recorder-panel-simple" data-autogen-recorder-ignore>
-      {/* Título */}
-      <div className="recorder-title">
-        <input
-          type="text"
-          value={textos.titulo}
-          onChange={(e) => handleTextChange('titulo', e.target.value)}
-          className="editable-field title-field"
-        />
-      </div>
+    <div data-autogen-recorder-ignore style={{
+      padding: 20,
+      background: "#fff",
+      borderRadius: 8,
+      maxWidth: 1200,
+      margin: "0 auto"
+    }}>
+      <h2 style={{
+        color: "#2c3e50",
+        marginBottom: 20,
+        textAlign: "center",
+        fontSize: "24px"
+      }}>
+        AutoGen QA Recorder - Complemento de Chrome
+      </h2>
 
-      {/* Estado */}
-      <div className="recorder-status">
-        <strong>
-          <input
-            type="text"
-            value={textos.estado}
-            onChange={(e) => handleTextChange('estado', e.target.value)}
-            className="editable-field status-field"
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 30
+      }}>
+        {/* Imagen del complemento */}
+        <div style={{
+          border: "2px solid #e0e0e0",
+          borderRadius: 8,
+          padding: 10,
+          backgroundColor: "#f8f9fa",
+          boxShadow: "0 4px 6px rgba(0,0,0,0.1)"
+        }}>
+          <img
+            src="/1000132641.png"
+            alt="AutoGen QA Recorder Chrome Extension"
+            style={{
+              maxWidth: "100%",
+              height: "auto",
+              borderRadius: 4,
+              display: "block"
+            }}
           />
-        </strong>
-      </div>
-
-      {/* Contador de pasos */}
-      <div className="steps-info">
-        <input
-          type="text"
-          value={textos.pasos}
-          onChange={(e) => handleTextChange('pasos', e.target.value)}
-          className="editable-field steps-field"
-          readOnly // No editable porque se actualiza automáticamente
-        />
-      </div>
-
-      {/* Botones */}
-      <div className="recorder-buttons">
-        <div className="button-item">
-          <button
-            onClick={startRecording}
-            disabled={recording}
-            className="recorder-btn start-btn"
-          >
-            <span className="btn-indicator"></span>
-            <input
-              type="text"
-              value={textos.iniciar}
-              onChange={(e) => handleTextChange('iniciar', e.target.value)}
-              className="editable-field btn-text"
-            />
-          </button>
         </div>
 
-        <div className="button-item">
-          <button
-            onClick={stopRecording}
-            disabled={!recording}
-            className="recorder-btn stop-btn"
-          >
-            <input
-              type="text"
-              value={textos.detener}
-              onChange={(e) => handleTextChange('detener', e.target.value)}
-              className="editable-field btn-text"
-            />
-          </button>
+        {/* Información del complemento */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 30,
+          width: "100%"
+        }}>
+          {/* Columna izquierda - Instalación */}
+          <div style={{
+            padding: 20,
+            backgroundColor: "#f8f9fa",
+            borderRadius: 8,
+            border: "1px solid #e0e0e0"
+          }}>
+            <h3 style={{
+              color: "#2c3e50",
+              marginBottom: 15,
+              fontSize: "18px"
+            }}>
+              📥 Instalación del Complemento
+            </h3>
+            <p style={{
+              lineHeight: 1.6,
+              marginBottom: 15,
+              color: "#555"
+            }}>
+              El complemento de Chrome llamado <strong>AutoGen QA Recorder</strong> es el complemento que permite realizar la grabación del flujo web que desea automatizar con Serenity BDD Screenplay.
+            </p>
+            <p style={{
+              lineHeight: 1.6,
+              color: "#555"
+            }}>
+              Para usarlo debe instalarlo desde <code style={{
+                backgroundColor: "#e9ecef",
+                padding: "2px 6px",
+                borderRadius: 3,
+                fontSize: "14px"
+              }}>chrome://extensions/</code> habilitando la opción de <strong>Modo desarrollador</strong> y <strong>Cargando la Extensión sin Empaquetar</strong>. Una vez hecho esto debe aparecer el ID del complemento con el service worker <strong>Activo</strong> y ya podrá hacer uso de la grabadora.
+            </p>
+          </div>
+
+          {/* Columna derecha - Uso */}
+          <div style={{
+            padding: 20,
+            backgroundColor: "#f8f9fa",
+            borderRadius: 8,
+            border: "1px solid #e0e0e0"
+          }}>
+            <h3 style={{
+              color: "#2c3e50",
+              marginBottom: 15,
+              fontSize: "18px"
+            }}>
+              🎯 Uso del Complemento
+            </h3>
+            <p style={{
+              lineHeight: 1.6,
+              marginBottom: 15,
+              color: "#555"
+            }}>
+              Su uso es bastante sencillo:
+            </p>
+            <ol style={{
+              lineHeight: 1.8,
+              paddingLeft: 20,
+              color: "#555"
+            }}>
+              <li><strong style={{color: "#27ae60"}}>Botón verde</strong> inicia la grabación del sitio web.</li>
+              <li><strong style={{color: "#e74c3c"}}>Botón rojo</strong> detiene la grabación del flujo.</li>
+              <li><strong style={{color: "#3498db"}}>Botón azul</strong> descarga la grabación en formato .json</li>
+            </ol>
+            <p style={{
+              lineHeight: 1.6,
+              color: "#555",
+              marginTop: 15
+            }}>
+              El complemento indica cuántos pasos fueron grabados e indica si la grabación fue iniciada o detenida; también realiza grabación de elementos dentro de componentes <strong>shadow root</strong>.
+            </p>
+          </div>
         </div>
 
-        <div className="button-item">
-          <button
-            onClick={downloadRecording}
-            disabled={stepsCount === 0}
-            className="recorder-btn download-btn"
-          >
-            <input
-              type="text"
-              value={textos.descargar}
-              onChange={(e) => handleTextChange('descargar', e.target.value)}
-              className="editable-field btn-text"
-            />
-          </button>
+        {/* Características técnicas */}
+        <div style={{
+          padding: 20,
+          backgroundColor: "#e8f4fd",
+          borderRadius: 8,
+          border: "1px solid #3498db",
+          width: "100%"
+        }}>
+          <h3 style={{
+            color: "#2c3e50",
+            marginBottom: 10,
+            fontSize: "16px",
+            textAlign: "center"
+          }}>
+            🚀 Características Técnicas
+          </h3>
+          <div style={{
+            display: "flex",
+            justifyContent: "space-around",
+            flexWrap: "wrap",
+            gap: 15,
+            marginTop: 15
+          }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{
+                backgroundColor: "#27ae60",
+                color: "white",
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 8px"
+              }}>✓</div>
+              <span style={{ fontSize: "14px", color: "#555" }}>Soporte Shadow DOM</span>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{
+                backgroundColor: "#3498db",
+                color: "white",
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 8px"
+              }}>✓</div>
+              <span style={{ fontSize: "14px", color: "#555" }}>Exporta Formato JSON</span>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{
+                backgroundColor: "#9b59b6",
+                color: "white",
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 8px"
+              }}>✓</div>
+              <span style={{ fontSize: "14px", color: "#555" }}>Seguimiento de Pasos</span>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{
+                backgroundColor: "#e67e22",
+                color: "white",
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 8px"
+              }}>✓</div>
+              <span style={{ fontSize: "14px", color: "#555" }}>Grabación en tiempo real</span>
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Versión */}
-      <div className="recorder-version">
-        <input
-          type="text"
-          value={textos.version}
-          onChange={(e) => handleTextChange('version', e.target.value)}
-          className="editable-field version-field"
-        />
-      </div>
-
-      {/* Información adicional (oculta visualmente pero funcional) */}
-      <div style={{ display: 'none' }}>
-        <button onClick={() => setSteps([])}>Clear</button>
-        <button onClick={async () => {
-          try {
-            const resp = await fetch(`${backend}/api/record`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(steps),
-            });
-            const j = await resp.json();
-            if (resp.ok) {
-              alert(`Saved to backend: ${j.id || "ok"}`);
-            }
-          } catch (e) {
-            alert("Error saving to backend: " + e.message);
-          }
-        }} disabled={stepsCount === 0}>Save to backend</button>
       </div>
     </div>
   );
