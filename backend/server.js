@@ -27,6 +27,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use((req,res,next)=>{ console.log(new Date().toISOString(), req.method, req.url); next(); });
 
 // Transform recording -> project files (calls OpenAI)
+// backend/server.js - CORREGIR la función /api/transform-recording
+
 app.post("/api/transform-recording", async (req,res)=>{
   try {
     const { recording, url, testData } = req.body;
@@ -35,28 +37,59 @@ app.post("/api/transform-recording", async (req,res)=>{
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "You are a senior Java automation engineer that outputs a JSON mapping of file paths to file contents for a Maven Serenity+Screenplay project." },
+        {
+          role: "system",
+          content: "Eres un ingeniero senior de automatización Java. Devuelve SOLO un objeto JSON válido que mapee rutas de archivos a contenidos, sin texto adicional, sin markdown, sin ```json."
+        },
         { role: "user", content: prompt }
       ],
-      temperature: 0.2,
-      max_tokens: 4000
+      temperature: 0.1,
+      max_tokens: 8000
     });
+
     const raw = completion.choices?.[0]?.message?.content ?? "";
+    console.log("Raw OpenAI response:", raw.substring(0, 500) + "...");
+
     let files;
-    try { files = JSON.parse(raw); } catch(e){ return res.status(500).json({ error: "OpenAI returned non-JSON", raw }); }
+    try {
+      // Limpiar la respuesta - eliminar markdown code blocks
+      let cleaned = raw.trim();
+      if (cleaned.startsWith('```json')) {
+        cleaned = cleaned.substring(7);
+      }
+      if (cleaned.endsWith('```')) {
+        cleaned = cleaned.substring(0, cleaned.length - 3);
+      }
+      cleaned = cleaned.trim();
+
+      files = JSON.parse(cleaned);
+    } catch(e){
+      console.error("JSON parse error:", e.message);
+      console.error("Content that failed:", raw);
+      return res.status(500).json({ error: "OpenAI returned non-JSON", raw: raw.substring(0, 1000) });
+    }
+
+    // Validar que files es un objeto
+    if (typeof files !== 'object' || files === null) {
+      return res.status(500).json({ error: "OpenAI response is not a valid object", files });
+    }
+
     // save files into output/job
     const jobId = `job_${Date.now()}`;
     const outDir = path.join(__dirname, "output", jobId);
     fs.mkdirSync(outDir, { recursive: true });
+
     for(const [fname, content] of Object.entries(files)){
       const p = path.join(outDir, fname);
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, content, "utf8");
     }
+
     const zipPath = path.join(__dirname, "output", `${jobId}.zip`);
     const zip = new AdmZip();
     zip.addLocalFolder(outDir);
     zip.writeZip(zipPath);
+
     res.json({ jobId, download: `/api/download/${jobId}` });
   } catch(err){
     console.error("transform error", err);
