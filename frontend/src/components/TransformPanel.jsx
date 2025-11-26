@@ -44,7 +44,7 @@ export default function TransformPanel({ backend, recording, onJob }){
 
   return (
     <div className="transform-panel">
-      <h3>🛠️ Generar Proyecto de Automatización</h3>
+      <h3>🛠️ Generar Proyecto de Automatización Web</h3>
 
       <div className="form-group">
         <label>🌐 URL Base de la Aplicación</label>
@@ -70,7 +70,7 @@ export default function TransformPanel({ backend, recording, onJob }){
           disabled={loading || !recording}
           className="generate-button"
         >
-          {loading ? '⏳ Generando...' : '🚀 Generar Proyecto Serenity (.zip)'}
+          {loading ? '⏳ Generando...' : '👉 Generar Proyecto Serenity (.zip)'}
         </button>
 
         {!recording && (

@@ -5,14 +5,16 @@ const BOOKMARKLET = `javascript:(function(){window.__AUTOGEN_RECORDER=true;windo
 export default function RecorderGuide(){
   return (
     <div style={{padding:12, background:'#fff', borderRadius:8}}>
-      <h3>Grabadora (bookmarklet)</h3>
-      <p>Arrastra este enlace a tu barra de marcadores.: <a href={BOOKMARKLET}>AutoGen Recorder</a></p>
+      <h3>Grabación del Flujo Web</h3>
       <ol>
-        <li>Abre la aplicación de destino en una nueva pestaña.</li>
-        <li>Haz clic en el bookmarklet (marcador) desde tu barra de favoritos/marcadores — esto activará un grabador en esa página.</li>
-        <li>Realiza los pasos que quieres grabar (clics, entradas/datos).</li>
-        <li>Cuando termines, abre la consola del navegador y ejecuta: <code>copy(JSON.stringify(window.__AUTOGEN_steps))</code> para copiar el JSON.</li>
-        <li>Vuelve aquí y pega/sube el JSON.</li>
+        <li>Graba tu flujo desde el complemento de Chrome AutoGen QA Recorder.</li>
+        <li>Descarga el .json del recorder.</li>
+        <li>Ingresa a la pestaña Subir Grabación.</li>
+        <li>Selecciona tu archivo de Recorder con extensión .json.</li>
+        <li>Da clic en el botón Aceptar de popup Archivo Cargado.</li>
+        <li>Ingrese la url de la aplicación web.</li>
+        <li>De click en el botón Generar Proyecto Serenity Screenplay (.zip).</li>
+        <li>Descarga el Proyecto Serenity Screenplay (.zip).</li>
       </ol>
     </div>
   )

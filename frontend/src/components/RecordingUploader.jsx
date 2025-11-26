@@ -6,13 +6,13 @@ export default function RecordingUploader({ onLoad }){
     try{
       const j = JSON.parse(text);
       onLoad(j);
-      alert('Recording loaded');
-    }catch(e){ alert('Invalid JSON'); }
+      alert('Grabación cargada');
+    }catch(e){ alert('JSON Inválido'); }
   };
   const onFile = async (e)=>{
     const f = e.target.files?.[0]; if(!f) return;
     const txt = await f.text();
-    try{ const j = JSON.parse(txt); onLoad(j); alert('Loaded file'); } catch(e){ alert('Invalid JSON file'); }
+    try{ const j = JSON.parse(txt); onLoad(j); alert('Archivo Cargado'); } catch(e){ alert('Archivo JSON Inválido'); }
   };
   return (
     <div style={{marginTop:12, padding:12, background:'#fff', borderRadius:8}}>

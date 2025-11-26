@@ -1,27 +1,13 @@
 // frontend/src/components/RecorderPanel.jsx
 import React, { useEffect, useState, useRef } from "react";
 
-/**
- * RecorderPanel
- * - startRecording(): añade listeners de captura (click, input, change)
- * - stopRecording(): elimina listeners
- * - downloadRecording(): descarga JSON
- * - saveToBackend(): POST /api/record
- *
- * Nota: este recorder fue diseñado para ejecutarse en la página que quieres grabar.
- * Si vas a probarlo en la misma app frontend, OK; si vas a grabar otra web,
- * abre esa web en otra pestaña, abre la consola y pega el contenido del handler (ver README de uso abajo).
- */
-
 function computeSelector(el) {
   if (!el) return "";
   if (el.id) return `#${el.id}`;
-  // prefer unique class-based selector
   if (el.className && typeof el.className === "string" && el.className.trim()) {
     const classes = el.className.trim().split(/\s+/).join(".");
     return `${el.tagName.toLowerCase()}.${classes}`;
   }
-  // fallback to tag + nth-child
   let path = el.tagName.toLowerCase();
   if (el.parentElement) {
     const siblings = Array.from(el.parentElement.children).filter(c => c.tagName === el.tagName);
@@ -39,16 +25,30 @@ export default function RecorderPanel({ backend = "http://localhost:3000" }) {
   const [steps, setSteps] = useState([]);
   const handlersRef = useRef({});
 
+  // Textos editables para cada elemento
+  const [textos, setTextos] = useState({
+    titulo: "AutoGen QA Recorder",
+    estado: "Grabación Detenida",
+    pasos: "Pasos grabados: 0",
+    iniciar: "Iniciar Grabación",
+    detener: "Detener Grabación",
+    descargar: "Descargar JSON",
+    version: "Versión 1.1 - Shadow DOM Support"
+  });
+
   useEffect(() => {
-    // keep window.__AUTOGEN_steps in sync so it's accessible if user copies from console
     window.__AUTOGEN_steps = steps;
+    // Actualizar contador de pasos
+    setTextos(prev => ({
+      ...prev,
+      pasos: `Pasos grabados: ${steps.length}`
+    }));
   }, [steps]);
 
   function createHandler() {
     return function handler(ev) {
       try {
         const t = ev.target;
-        // ignore if the element is the recorder UI itself (if recording inside same page)
         if (!t) return;
         if (t.closest && t.closest("[data-autogen-recorder-ignore]")) return;
 
@@ -62,39 +62,38 @@ export default function RecorderPanel({ backend = "http://localhost:3000" }) {
           x: rect.x || 0,
           y: rect.y || 0,
         };
-        // push to state
         setSteps(prev => {
           const next = [...prev, step];
-          // keep a copy on window for console usage
           window.__AUTOGEN_steps = next;
           setStepsCount(next.length);
           return next;
         });
-      } catch (e) {
-        // ignore errors from 읽
-      }
+      } catch (e) {}
     };
   }
 
   function startRecording() {
     if (recording) return;
-    // init
     setSteps([]);
     setStepsCount(0);
     window.__AUTOGEN_steps = [];
 
     const h = createHandler();
     handlersRef.current = { handler: h };
-    // use capture phase to catch events before page handlers
     ["click", "change", "input"].forEach(evt => document.addEventListener(evt, h, true));
     setRecording(true);
-    // provide a global flag so the console snippet can interact
     window.__AUTOGEN_RECORDER = true;
-    alert("Recorder active. Perform actions on the page. When finished use Stop and Download.");
 
+    // Actualizar estado
+    setTextos(prev => ({
+      ...prev,
+      estado: "🔴 Grabando...",
+      pasos: "Pasos grabados: 0"
+    }));
 
+    alert("Grabador activo. Realiza acciones en la página.");
 
-    // Inicializar soporte para Shadow DOM
+    // Shadow DOM support (mantener funcionalidad existente)
     (function(){
       if (window.__SHADOW_RECORDER__INIT) return;
       window.__SHADOW_RECORDER__INIT = true;
@@ -168,12 +167,9 @@ export default function RecorderPanel({ backend = "http://localhost:3000" }) {
       });
 
       observer.observe(document.documentElement, { childList: true, subtree: true });
-
       attachListeners(document);
       scanForShadowRoots(document.documentElement);
-
     })();
-
   }
 
   function stopRecording() {
@@ -185,7 +181,13 @@ export default function RecorderPanel({ backend = "http://localhost:3000" }) {
     handlersRef.current = {};
     setRecording(false);
     window.__AUTOGEN_RECORDER = false;
-    alert(`Recording stopped. ${stepsCount} steps captured.`);
+
+    setTextos(prev => ({
+      ...prev,
+      estado: "Grabación Detenida"
+    }));
+
+    alert(`Grabación detenida. ${stepsCount} pasos capturados.`);
   }
 
   function downloadRecording() {
@@ -200,105 +202,130 @@ export default function RecorderPanel({ backend = "http://localhost:3000" }) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    alert("Grabación descargada exitosamente!");
   }
 
-  async function saveToBackend() {
-    try {
-      const resp = await fetch(`${backend}/api/record`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(steps),
-      });
-      const j = await resp.json();
-      if (resp.ok) {
-        alert(`Saved to backend: ${j.id || "ok"}. Path: ${j.path || ""}`);
-      } else {
-        alert(`Error saving: ${JSON.stringify(j)}`);
-      }
-    } catch (e) {
-      alert("Error saving to backend: " + e.message);
-    }
-  }
-
-  function clear() {
-    if (recording) stopRecording();
-    setSteps([]);
-    setStepsCount(0);
-    window.__AUTOGEN_steps = [];
-  }
+  // Manejar cambios en los textos editables
+  const handleTextChange = (campo, valor) => {
+    setTextos(prev => ({
+      ...prev,
+      [campo]: valor
+    }));
+  };
 
   return (
-    <div data-autogen-recorder-ignore style={{ padding: 12, background: "#fff", borderRadius: 8 }}>
-      <h3>Recorder (in-page)</h3>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={startRecording} disabled={recording} title="Start recording">
-          <span style={{ display: "inline-block", width: 12, height: 12, marginRight: 8, borderRadius: 6, background: recording ? "red" : "#ccc" }} />
-          Start
-        </button>
-        <button onClick={stopRecording} disabled={!recording} title="Stop recording">Stop</button>
-        <button onClick={downloadRecording} disabled={stepsCount === 0}>Download (.json)</button>
-        <button onClick={saveToBackend} disabled={stepsCount === 0}>Save to backend</button>
-        <button onClick={clear}>Clear</button>
-        <div style={{ marginLeft: "auto", fontSize: 14 }}>
-          <strong>{stepsCount}</strong> steps
+    <div className="recorder-panel-simple" data-autogen-recorder-ignore>
+      {/* Título */}
+      <div className="recorder-title">
+        <input
+          type="text"
+          value={textos.titulo}
+          onChange={(e) => handleTextChange('titulo', e.target.value)}
+          className="editable-field title-field"
+        />
+      </div>
+
+      {/* Estado */}
+      <div className="recorder-status">
+        <strong>
+          <input
+            type="text"
+            value={textos.estado}
+            onChange={(e) => handleTextChange('estado', e.target.value)}
+            className="editable-field status-field"
+          />
+        </strong>
+      </div>
+
+      {/* Contador de pasos */}
+      <div className="steps-info">
+        <input
+          type="text"
+          value={textos.pasos}
+          onChange={(e) => handleTextChange('pasos', e.target.value)}
+          className="editable-field steps-field"
+          readOnly // No editable porque se actualiza automáticamente
+        />
+      </div>
+
+      {/* Botones */}
+      <div className="recorder-buttons">
+        <div className="button-item">
+          <button
+            onClick={startRecording}
+            disabled={recording}
+            className="recorder-btn start-btn"
+          >
+            <span className="btn-indicator"></span>
+            <input
+              type="text"
+              value={textos.iniciar}
+              onChange={(e) => handleTextChange('iniciar', e.target.value)}
+              className="editable-field btn-text"
+            />
+          </button>
+        </div>
+
+        <div className="button-item">
+          <button
+            onClick={stopRecording}
+            disabled={!recording}
+            className="recorder-btn stop-btn"
+          >
+            <input
+              type="text"
+              value={textos.detener}
+              onChange={(e) => handleTextChange('detener', e.target.value)}
+              className="editable-field btn-text"
+            />
+          </button>
+        </div>
+
+        <div className="button-item">
+          <button
+            onClick={downloadRecording}
+            disabled={stepsCount === 0}
+            className="recorder-btn download-btn"
+          >
+            <input
+              type="text"
+              value={textos.descargar}
+              onChange={(e) => handleTextChange('descargar', e.target.value)}
+              className="editable-field btn-text"
+            />
+          </button>
         </div>
       </div>
-      <p style={{ marginTop: 8, fontSize: 13 }}>
-        Nota: Este recorder funciona **pegado en la misma página** que quieras grabar.
-        Si vas a grabar otra web, abre esa web en otra pestaña, abre la consola y pega:
-      </p>
-      <pre style={{ fontSize: 11, background: "#f6f6f6", padding: 8, borderRadius: 4, overflowX: "auto" }}>
-{`/* === INICIAR RECORDER MANUAL === */
-  window.__AUTOGEN_steps = [];
 
-  function sel(e){
-    if(!e) return '';
-    if(e.id) return '#'+e.id;
-    if(e.className && typeof e.className === 'string' && e.className.trim()){
-      return e.tagName.toLowerCase() + '.' + e.className.trim().split(/\s+/).join('.');
-    }
-    return e.tagName.toLowerCase();
-  }
+      {/* Versión */}
+      <div className="recorder-version">
+        <input
+          type="text"
+          value={textos.version}
+          onChange={(e) => handleTextChange('version', e.target.value)}
+          className="editable-field version-field"
+        />
+      </div>
 
-  function handler(ev){
-    try{
-      const t = ev.target;
-      if(!t) return;
-      const rect = t.getBoundingClientRect ? t.getBoundingClientRect() : { x: 0, y:0 };
-      const step = {
-        ts: new Date().toISOString(),
-        action: ev.type,
-        selector: sel(t),
-        tag: t.tagName,
-        value: (t.value !== undefined ? t.value : null),
-        x: rect.x || 0,
-        y: rect.y || 0
-      };
-      window.__AUTOGEN_steps.push(step);
-    }catch(e){}
-  }
-
-  ['click','change','input'].forEach(evt =>
-    document.addEventListener(evt, handler, true)
-  );
-
-  alert("Recorder active! When done, run saveRecording()");
-
-  /* === FUNCIÓN DE DESCARGA === */
-  function saveRecording(){
-    const data = JSON.stringify(window.__AUTOGEN_steps, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "autogen_recording_" + Date.now() + ".json";
-    a.click();
-    URL.revokeObjectURL(url);
-    alert("Grabación descargada en tu carpeta Descargas!");
-  }
-
-`}
-      </pre>
+      {/* Información adicional (oculta visualmente pero funcional) */}
+      <div style={{ display: 'none' }}>
+        <button onClick={() => setSteps([])}>Clear</button>
+        <button onClick={async () => {
+          try {
+            const resp = await fetch(`${backend}/api/record`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(steps),
+            });
+            const j = await resp.json();
+            if (resp.ok) {
+              alert(`Saved to backend: ${j.id || "ok"}`);
+            }
+          } catch (e) {
+            alert("Error saving to backend: " + e.message);
+          }
+        }} disabled={stepsCount === 0}>Save to backend</button>
+      </div>
     </div>
   );
 }
