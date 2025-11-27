@@ -100,6 +100,54 @@ body {
   gap: 20px;
 }
 
+.generate-button {
+  background: #27ae60;
+  color: white;
+  border: none;
+  padding: 15px 30px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.generate-button:not(:disabled) {
+  animation: pulse 2s infinite;
+}
+
+.generate-button:hover:not(:disabled) {
+  background: #219653;
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4);
+}
+
+.generate-button:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+  animation: none;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(39, 174, 96, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(39, 174, 96, 0);
+  }
+}
+
+
+
+
+
+
+
 .status-card, .download-card {
   background: white;
   padding: 20px;

@@ -35,7 +35,7 @@ export default function RecorderGuide(){
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text'
-          }}>🚀 Guía Completa de Automatización</span>
+          }}>Guía Completa Generación de Automatización Desde Grabación</span>
         </h2>
         <p style={{
           color: '#666',

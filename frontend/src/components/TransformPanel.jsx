@@ -47,7 +47,7 @@ export default function TransformPanel({ backend, recording, onJob }){
       <h3>🛠️ Generar Proyecto de Automatización Web</h3>
 
       <div className="form-group">
-        <label>🌐 URL Base de la Aplicación</label>
+        <label>🌐 URL Base de la Aplicación (opcional)</label>
         <input
           value={url}
           onChange={e => setUrl(e.target.value)}
