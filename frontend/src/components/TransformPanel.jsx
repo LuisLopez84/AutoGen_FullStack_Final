@@ -4,6 +4,7 @@ export default function TransformPanel({ backend, recording, onJob }){
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [testData, setTestData] = useState('');
+  const [flow, setFlow] = useState(''); // <- NUEVO ESTADO PARA EL FLUJO
 
   async function transform(){
     if(!recording || recording.length === 0) {
@@ -16,7 +17,8 @@ export default function TransformPanel({ backend, recording, onJob }){
       const payload = {
         recording,
         url: url || "https://ejemplo.com",
-        testData: testData ? JSON.parse(testData) : {}
+        testData: testData ? JSON.parse(testData) : {},
+        flow: flow || "Automation Flow" // <- AGREGAR FLUJO AL PAYLOAD
       };
 
       const resp = await fetch(`${backend}/api/transform-recording`, {
@@ -45,6 +47,16 @@ export default function TransformPanel({ backend, recording, onJob }){
   return (
     <div className="transform-panel">
       <h3>🛠️ Generar Proyecto de Automatización Web</h3>
+
+      {/* NUEVO CAMPO PARA EL FLUJO */}
+      <div className="form-group">
+        <label>📝 Nombre del Flujo (opcional)</label>
+        <input
+          value={flow}
+          onChange={e => setFlow(e.target.value)}
+          placeholder="Ej: Login de usuario, Registro, Compra"
+        />
+      </div>
 
       <div className="form-group">
         <label>🌐 URL Base de la Aplicación (opcional)</label>
