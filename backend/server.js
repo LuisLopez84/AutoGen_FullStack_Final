@@ -234,55 +234,302 @@ app.post("/api/transform-recording", async (req,res)=>{
         }
     }`;
 
-        // 2. ARCHIVOS DE OPENAI (solo los que necesitamos)
-        console.log("🤖 Procesando archivos de OpenAI...");
 
-        // Definir qué archivos esperamos de OpenAI
-        const openAIFilePaths = {
-          'UserQuestion.java': 'src/main/java/co/com/template/automation/testing/questions/UserQuestion.java',
-          'UserTask.java': 'src/main/java/co/com/template/automation/testing/tasks/UserTask.java',
-          'LoginPage.java': 'src/main/java/co/com/template/automation/testing/ui/LoginPage.java',
-          'ShadowDomUtils.java': 'src/main/java/co/com/template/automation/testing/utils/ShadowDomUtils.java',
-          'EnvironmentProperties.java': 'src/main/java/co/com/template/automation/testing/utils/EnvironmentProperties.java',
-          'Hooks.java': 'src/test/java/co/com/template/automation/testing/definitions/hooks/Hooks.java',
-          'FlujosDefinitions.java': 'src/test/java/co/com/template/automation/testing/definitions/FlujosDefinitions.java'
-        };
 
-        // Función para encontrar archivos en el objeto de OpenAI
-        function findFileInOpenAI(filename) {
-          // Buscar en todos los niveles del objeto
-          function search(obj, path = '') {
-            for (const [key, value] of Object.entries(obj)) {
-              const currentPath = path ? `${path}/${key}` : key;
+// 2. ARCHIVOS DE OPENAI (versión corregida)
+console.log("🤖 Procesando archivos de OpenAI...");
 
-              if (typeof value === 'string') {
-                // Si el nombre coincide o contiene el nombre del archivo
-                if (key.includes(filename) || currentPath.includes(filename)) {
-                  return value;
-                }
-              } else if (typeof value === 'object' && value !== null) {
-                const found = search(value, currentPath);
-                if (found) return found;
-              }
+// Función mejorada para buscar archivos en la respuesta de OpenAI
+function findFileContentInOpenAIResponse(filenamePattern) {
+  // Primero, intentar búsqueda directa en el objeto
+  function deepSearch(obj, targetKey) {
+    if (!obj || typeof obj !== 'object') return null;
+
+    // Buscar en propiedades del objeto actual
+    for (const [key, value] of Object.entries(obj)) {
+      // Si la clave coincide con el patrón
+      if (key.toLowerCase().includes(filenamePattern.toLowerCase())) {
+        if (typeof value === 'string' && value.length > 10) {
+          return value;
+        }
+      }
+
+      // Si el valor es un objeto, buscar recursivamente
+      if (typeof value === 'object' && value !== null) {
+        const found = deepSearch(value, targetKey);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  // También buscar en todo el texto si el objeto está anidado de forma extraña
+  const jsonString = JSON.stringify(openaiFiles);
+  const lines = jsonString.split('\n');
+
+  // Buscar patrones específicos
+  const searchPatterns = [
+    filenamePattern,
+    filenamePattern.replace('.java', ''),
+    filenamePattern.toLowerCase(),
+    filenamePattern.replace('.java', '').toLowerCase()
+  ];
+
+  for (const pattern of searchPatterns) {
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].toLowerCase().includes(pattern.toLowerCase())) {
+        // Intentar extraer el contenido Java
+        let content = '';
+        let inCodeBlock = false;
+
+        // Buscar desde esta línea hacia adelante
+        for (let j = i; j < Math.min(i + 50, lines.length); j++) {
+          if (lines[j].includes('package ') || lines[j].includes('import ') ||
+              lines[j].includes('public class') || lines[j].includes('class ')) {
+            inCodeBlock = true;
+          }
+
+          if (inCodeBlock) {
+            content += lines[j] + '\n';
+
+            // Detectar fin de bloque de código (línea vacía después de llave de cierre)
+            if (lines[j].includes('}') && (j + 1 < lines.length) &&
+                (lines[j + 1].trim() === '' || lines[j + 1].includes('"'))) {
+              break;
             }
-            return null;
           }
-          return search(openaiFiles);
         }
 
-        // Obtener archivos de OpenAI
-        for (const [shortName, fullPath] of Object.entries(openAIFilePaths)) {
-          const content = findFileInOpenAI(shortName);
-          if (content && content.length > 50) {
-            files[fullPath] = content;
-            console.log(`✅ ${fullPath} obtenido de OpenAI (${content.length} chars)`);
-          } else {
-            // Crear placeholder
-            const placeholder = `// ${shortName}\n// Archivo generado automáticamente\n// Contenido a implementar según necesidades\n`;
-            files[fullPath] = placeholder;
-            console.log(`⚠️  ${fullPath} no encontrado en OpenAI, usando placeholder`);
-          }
+        if (content.length > 100) {
+          // Limpiar el contenido de caracteres JSON
+          content = content.replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+          return content;
         }
+      }
+    }
+  }
+
+  return null;
+}
+
+// Archivos esperados de OpenAI con sus placeholders por defecto
+const expectedOpenAIFiles = {
+  // Questions
+  'UserQuestion.java': {
+    path: 'src/main/java/co/com/template/automation/testing/questions/UserQuestion.java',
+    placeholder: `package co.com.template.automation.testing.questions;
+
+import net.serenitybdd.screenplay.Question;
+import net.serenitybdd.screenplay.questions.Text;
+
+import static co.com.template.automation.testing.ui.UserPage.USERNAME_DISPLAY;
+
+public class UserQuestion {
+
+    public static Question<String> displayedUsername() {
+        return actor -> Text.of(USERNAME_DISPLAY).viewedBy(actor).asString();
+    }
+}`
+  },
+
+  // Tasks
+  'UserTask.java': {
+    path: 'src/main/java/co/com/template/automation/testing/tasks/UserTask.java',
+    placeholder: `package co.com.template.automation.testing.tasks;
+
+import net.serenitybdd.screenplay.Task;
+import net.serenitybdd.screenplay.actions.Click;
+import net.serenitybdd.screenplay.actions.Enter;
+
+import static co.com.template.automation.testing.ui.UserPage.*;
+
+public class UserTask {
+
+    public static Task loginWithCredentials(String username, String password) {
+        return Task.where("{0} logs in with username " + username,
+            Enter.theValue(username).into(USERNAME_FIELD),
+            Enter.theValue(password).into(PASSWORD_FIELD),
+            Click.on(LOGIN_BUTTON)
+        );
+    }
+}`
+  },
+
+  // Pages
+  'LoginPage.java': {
+    path: 'src/main/java/co/com/template/automation/testing/ui/LoginPage.java',
+    placeholder: `package co.com.template.automation.testing.ui;
+
+import net.serenitybdd.core.pages.PageObject;
+import net.serenitybdd.screenplay.targets.Target;
+
+public class LoginPage extends PageObject {
+
+    public static final Target USERNAME_FIELD = Target
+        .the("username field")
+        .locatedBy("input[name='username']");
+
+    public static final Target PASSWORD_FIELD = Target
+        .the("password field")
+        .locatedBy("input[name='password']");
+
+    public static final Target LOGIN_BUTTON = Target
+        .the("login button")
+        .locatedBy("button[type='submit']");
+}`
+  },
+
+  // Utils
+  'ShadowDomUtils.java': {
+    path: 'src/main/java/co/com/template/automation/testing/utils/ShadowDomUtils.java',
+    placeholder: `package co.com.template.automation.testing.utils;
+
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+
+public class ShadowDomUtils {
+
+    public static WebElement expandShadowRoot(WebDriver driver, WebElement shadowHost) {
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        return (WebElement) js.executeScript(
+            "return arguments[0].shadowRoot", shadowHost
+        );
+    }
+
+    public static WebElement findInShadowRoot(WebDriver driver, WebElement shadowHost, String cssSelector) {
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        return (WebElement) js.executeScript(
+            "return arguments[0].shadowRoot.querySelector(arguments[1])",
+            shadowHost, cssSelector
+        );
+    }
+}`
+  },
+
+  'EnvironmentProperties.java': {
+    path: 'src/main/java/co/com/template/automation/testing/utils/EnvironmentProperties.java',
+    placeholder: `package co.com.template.automation.testing.utils;
+
+import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
+import net.thucydides.model.environment.SystemEnvironmentVariables;
+
+public final class EnvironmentProperties {
+
+    private EnvironmentProperties() {
+        // Utility class
+    }
+
+    public static String getProperty(String propertyName) {
+        return EnvironmentSpecificConfiguration.from(
+            SystemEnvironmentVariables.createEnvironmentVariables()
+        ).getProperty(propertyName);
+    }
+
+    public static String getUrl() {
+        return getProperty("webdriver.base.url");
+    }
+}`
+  },
+
+  // Definitions
+  'FlujosDefinitions.java': {
+    path: 'src/test/java/co/com/template/automation/testing/definitions/FlujosDefinitions.java',
+    placeholder: `package co.com.template.automation.testing.definitions;
+
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import net.serenitybdd.screenplay.actors.OnStage;
+
+import static co.com.template.automation.testing.tasks.UserTask.*;
+import static co.com.template.automation.testing.questions.UserQuestion.*;
+
+public class FlujosDefinitions {
+
+    @Given("the user is on the login page")
+    public void userIsOnLoginPage() {
+        OnStage.theActorInTheSpotlight().attemptsTo(
+            // Open the application
+        );
+    }
+
+    @When("the user logs in with {string} and {string}")
+    public void userLogsIn(String username, String password) {
+        OnStage.theActorInTheSpotlight().attemptsTo(
+            loginWithCredentials(username, password)
+        );
+    }
+
+    @Then("the user should see their username displayed")
+    public void userShouldSeeUsername() {
+        OnStage.theActorInTheSpotlight().should(
+            seeThat(displayedUsername(), equalTo("expected_username"))
+        );
+    }
+}`
+  },
+
+  // Hooks
+  'Hooks.java': {
+    path: 'src/test/java/co/com/template/automation/testing/definitions/hooks/Hooks.java',
+    placeholder: `package co.com.template.automation.testing.definitions.hooks;
+
+import io.cucumber.java.Before;
+import io.cucumber.java.After;
+import net.serenitybdd.screenplay.actors.Cast;
+import net.serenitybdd.screenplay.actors.OnStage;
+import net.thucydides.model.util.EnvironmentVariables;
+import org.openqa.selenium.WebDriver;
+
+public class Hooks {
+
+    private EnvironmentVariables environmentVariables;
+    private WebDriver driver;
+
+    @Before
+    public void setTheStage() {
+        OnStage.setTheStage(new Cast());
+    }
+
+    @After
+    public void tearDown() {
+        OnStage.drawTheCurtain();
+        if (driver != null) {
+            driver.quit();
+        }
+    }
+}`
+  }
+};
+
+// Procesar cada archivo esperado
+for (const [fileName, fileInfo] of Object.entries(expectedOpenAIFiles)) {
+  let content = findFileContentInOpenAIResponse(fileName);
+
+  if (!content || content.length < 100) {
+    // También buscar por nombre sin extensión
+    const fileNameWithoutExt = fileName.replace('.java', '');
+    content = findFileContentInOpenAIResponse(fileNameWithoutExt);
+  }
+
+  if (content && content.length > 100) {
+    // Verificar que sea código Java válido
+    if (content.includes('package ') || content.includes('public class')) {
+      files[fileInfo.path] = content;
+      console.log(`✅ ${fileInfo.path} obtenido de OpenAI (${content.length} chars)`);
+    } else {
+      files[fileInfo.path] = fileInfo.placeholder;
+      console.log(`⚠️  ${fileInfo.path} contenido inválido, usando placeholder`);
+    }
+  } else {
+    files[fileInfo.path] = fileInfo.placeholder;
+    console.log(`⚠️  ${fileInfo.path} no encontrado en OpenAI, usando placeholder (${fileInfo.placeholder.length} chars)`);
+  }
+}
+
+
+
 
         // 3. FEATURE FILE (especial)
         if (openaiFiles['src/test/resources/features/flujos.feature']) {
@@ -321,6 +568,133 @@ app.post("/api/transform-recording", async (req,res)=>{
         files['README.md'] = `# Serenity BDD Automation Project\n\nProyecto generado automáticamente para automatización de pruebas.`;
         files['serenity.properties'] = "serenity.project.name=serenity-automation-template\nserenity.take.screenshots=FOR_EACH_ACTION\nserenity.logging=VERBOSE\nwebdriver.driver=chrome";
         files['sonar-project-custom.properties'] = "sonar.projectKey=co.com.template.automation.testing\nsonar.projectName=Serenity Automation Template\nsonar.projectVersion=1.0.0\nsonar.sources=src/main/java\nsonar.tests=src/test/java\nsonar.java.binaries=target/classes";
+
+
+        // En server.js, dentro del endpoint /api/transform-recording, después de procesar openaiFiles:
+
+        // Asegurar que tenemos todos los archivos necesarios
+        const requiredFiles = {
+          'feature': 'src/test/resources/features/login_admin_search.feature',
+          'stepdef': 'src/test/java/co/com/template/automation/testing/definitions/LoginDefinitions.java',
+          'loginPage': 'src/main/java/co/com/template/automation/testing/ui/LoginPage.java',
+          'adminPage': 'src/main/java/co/com/template/automation/testing/ui/AdminPage.java',
+          'loginTask': 'src/main/java/co/com/template/automation/testing/tasks/LoginTask.java',
+          'adminTask': 'src/main/java/co/com/template/automation/testing/tasks/NavigateToAdminTask.java',
+          'searchTask': 'src/main/java/co/com/template/automation/testing/tasks/SearchUserTask.java',
+          'loginQuestion': 'src/main/java/co/com/template/automation/testing/questions/LoginSuccessfulQuestion.java',
+          'searchQuestion': 'src/main/java/co/com/template/automation/testing/questions/SearchResultsQuestion.java',
+          'hooks': 'src/test/java/co/com/template/automation/testing/definitions/hooks/Hooks.java'
+        };
+
+        // Verificar y crear placeholders si faltan archivos
+        for (const [key, filePath] of Object.entries(requiredFiles)) {
+          if (!files[filePath] || files[filePath].length < 50) {
+            console.log(`⚠️  ${filePath} no generado por OpenAI, creando placeholder...`);
+
+            switch(key) {
+              case 'feature':
+                files[filePath] = `Feature: OrangeHRM Automation
+          Scenario: Login and search user
+            Given I open the OrangeHRM application
+            When I login with username "Admin" and password "admin123"
+            And I navigate to Admin section
+            And I search for user "Test User"
+            Then I should see search results`;
+                break;
+
+              case 'stepdef':
+                files[filePath] = `package co.com.template.automation.testing.definitions;
+
+        import io.cucumber.java.en.*;
+        import net.serenitybdd.screenplay.actors.OnStage;
+
+        public class LoginDefinitions {
+
+            @Given("I open the OrangeHRM application")
+            public void iOpenTheApplication() {
+                // Navigation handled by StepUrl class
+            }
+
+            @When("I login with username {string} and password {string}")
+            public void iLoginWithCredentials(String username, String password) {
+                // Implement login logic
+            }
+
+            @When("I navigate to Admin section")
+            public void iNavigateToAdminSection() {
+                // Implement navigation logic
+            }
+
+            @When("I search for user {string}")
+            public void iSearchForUser(String userName) {
+                // Implement search logic
+            }
+
+            @Then("I should see search results")
+            public void iShouldSeeSearchResults() {
+                // Implement verification logic
+            }
+        }`;
+                break;
+
+              case 'loginPage':
+                files[filePath] = `package co.com.template.automation.testing.ui;
+
+        import net.serenitybdd.core.pages.PageObject;
+        import net.serenitybdd.screenplay.targets.Target;
+
+        public class LoginPage extends PageObject {
+
+            public static final Target USERNAME_FIELD = Target
+                .the("username field")
+                .locatedBy("input[name='username']");
+
+            public static final Target PASSWORD_FIELD = Target
+                .the("password field")
+                .locatedBy("input[name='password']");
+
+            public static final Target LOGIN_BUTTON = Target
+                .the("login button")
+                .locatedBy("button[type='submit']");
+        }`;
+                break;
+
+           case 'EnvironmentProperties':
+              files[filePath] = `package co.com.template.automation.testing.utils.EnvironmentProperties.java;
+
+        import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
+        import net.thucydides.model.configuration.SystemPropertiesConfiguration;
+        import net.thucydides.model.environment.SystemEnvironmentVariables;
+        import net.thucydides.model.util.EnvironmentVariables;
+
+        public final class EnvironmentProperties {
+
+            private static final SystemPropertiesConfiguration CONFIGURATION = new SystemPropertiesConfiguration(SystemEnvironmentVariables.createEnvironmentVariables());
+            private static final EnvironmentVariables ENV_VARIABLES = CONFIGURATION.getEnvironmentVariables();
+
+            private EnvironmentProperties() {
+            }
+
+            public static String getProperty(String nameProperty) {
+                return EnvironmentSpecificConfiguration.from(ENV_VARIABLES).getProperty(nameProperty);
+            }
+
+            public static String getProperties() {
+
+                return EnvironmentProperties.getProperties();
+            }
+        }`
+
+            break;
+
+              // ... agregar más placeholders según sea necesario
+            }
+          }
+        }
+
+
+
+
 
         // ========== GUARDAR ARCHIVOS ==========
         const jobId = `job_${Date.now()}`;
