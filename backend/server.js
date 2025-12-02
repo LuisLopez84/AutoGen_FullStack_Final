@@ -10,7 +10,7 @@ import OpenAI from "openai";
 import { execSync } from "child_process";
 import { chromium } from "playwright";
 import { diffLines } from "diff";
-import { buildProjectPrompt, buildTransformPrompt } from "./prompts/generateProjectPrompt.js";
+import { buildTransformPrompt } from "./prompts/generateProjectPrompt.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,226 +26,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use((req,res,next)=>{ console.log(new Date().toISOString(), req.method, req.url); next(); });
 
-// Función para aplanar estructura JSON anidada - VERSIÓN AGRESIVA
-function flattenFileStructure(files) {
-  console.log("🔄 Aplanando estructura de archivos de forma mejorada...");
-  const flattened = {};
-
-  function processObject(obj, currentPath = '') {
-    for (const [key, value] of Object.entries(obj)) {
-      const newPath = currentPath ? `${currentPath}/${key}` : key;
-
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        // Es un objeto, procesar recursivamente
-        processObject(value, newPath);
-      } else if (typeof value === 'string') {
-        // Es un string, tratar como contenido de archivo
-        flattened[newPath] = value;
-        console.log(`  📍 ${newPath}: ${value.length} caracteres`);
-      } else if (value === null || value === undefined) {
-        // Valor nulo, omitir
-        console.warn(`⚠️  Valor nulo para ${newPath}, omitiendo`);
-      } else {
-        // Otro tipo, convertir a string
-        flattened[newPath] = String(value);
-        console.log(`  📍 ${newPath} (convertido a string): ${String(value).length} caracteres`);
-      }
-    }
-  }
-
-  // Procesar el objeto files
-  processObject(files);
-
-  console.log(`✅ Estructura aplanada: ${Object.keys(flattened).length} archivos`);
-
-  // Si no encontramos archivos, devolver la estructura original
-  if (Object.keys(flattened).length === 0) {
-    console.warn("⚠️  No se pudieron extraer archivos, usando estructura original");
-    return files;
-  }
-
-  return flattened;
-}
-
-
-
-// Función para reemplazar el pom.xml básico con el completo
-function replacePomXml(projectData) {
-  const completePomXml = `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <groupId>co.com.template.automation.testing</groupId>
-    <artifactId>serenity-automation-template</artifactId>
-    <version>1.0.0</version>
-
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <serenity.version>4.2.22</serenity.version>
-        <cucumber.version>7.20.1</cucumber.version>
-        <junit.version>5.11.0</junit.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-    </properties>
-
-    <dependencies>
-        <dependency>
-            <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-core</artifactId>
-            <version>\${serenity.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-cucumber</artifactId>
-            <version>\${serenity.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-screenplay</artifactId>
-            <version>\${serenity.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-screenplay-webdriver</artifactId>
-            <version>\${serenity.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-ensure</artifactId>
-            <version>\${serenity.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>io.cucumber</groupId>
-            <artifactId>cucumber-junit-platform-engine</artifactId>
-            <version>\${cucumber.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.junit.platform</groupId>
-            <artifactId>junit-platform-suite</artifactId>
-            <version>1.13.1</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>\${junit.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.junit.vintage</groupId>
-            <artifactId>junit-vintage-engine</artifactId>
-            <version>\${junit.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>1.2.10</version>
-        </dependency>
-
-        <dependency>
-            <groupId>io.github.bonigarcia</groupId>
-            <artifactId>webdrivermanager</artifactId>
-            <version>5.7.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>3.23.1</version>
-        </dependency>
-
-        <dependency>
-            <groupId>net.java.dev.jna</groupId>
-            <artifactId>jna</artifactId>
-            <version>5.13.0</version>
-        </dependency>
-        <dependency>
-            <groupId>net.java.dev.jna</groupId>
-            <artifactId>jna-platform</artifactId>
-            <version>5.13.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-model</artifactId>
-            <version>4.2.22</version>
-        </dependency>
-
-        <dependency>
-            <groupId>net.serenity-bdd.maven.plugins</groupId>
-            <artifactId>serenity-maven-plugin</artifactId>
-            <version>\${serenity.version}</version>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
-                <configuration>
-                    <source>\${maven.compiler.source}</source>
-                    <target>\${maven.compiler.target}</target>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>net.serenity-bdd.maven.plugins</groupId>
-                <artifactId>serenity-maven-plugin</artifactId>
-                <version>\${serenity.version}</version>
-                <configuration>
-                    <reports>single-page-html</reports>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>serenity-reports</id>
-                        <phase>post-integration-test</phase>
-                        <goals>
-                            <goal>aggregate</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
-</project>`;
-
-  console.log('🔧 Reemplazando pom.xml básico con versión completa...');
-
-  // AÑADIR ESTOS LOGS DENTRO DE LA FUNCIÓN
-  console.log('📊 projectData antes del reemplazo:');
-  console.log('  - Keys:', Object.keys(projectData));
-  console.log('  - pom.xml existe?:', 'pom.xml' in projectData);
-  if (projectData['pom.xml']) {
-    console.log('  - pom.xml actual tipo:', typeof projectData['pom.xml']);
-    console.log('  - pom.xml actual longitud:', projectData['pom.xml'].length);
-  }
-
-  // Asegurarnos de que projectData es un objeto válido
-  if (typeof projectData !== 'object' || projectData === null) {
-    console.error('❌ projectData no es un objeto válido:', projectData);
-    return projectData;
-  }
-
-  // Reemplazar SOLO el campo pom.xml
-  projectData['pom.xml'] = completePomXml;
-
-  // AÑADIR ESTOS LOGS ANTES DEL RETURN
-  console.log('✅ pom.xml reemplazado exitosamente');
-  console.log('📊 projectData después del reemplazo:');
-  console.log('  - Keys:', Object.keys(projectData));
-  console.log('  - nuevo pom.xml tipo:', typeof projectData['pom.xml']);
-  console.log('  - nuevo pom.xml longitud:', projectData['pom.xml'].length);
-
-  return projectData;
-}
-
 // Transform recording -> project files (calls OpenAI)
 app.post("/api/transform-recording", async (req,res)=>{
   try {
@@ -259,186 +39,357 @@ app.post("/api/transform-recording", async (req,res)=>{
       messages: [
         {
           role: "system",
-          content: "Eres un ingeniero senior de automatización Java. Devuelve SOLO un objeto JSON válido que mapee rutas de archivos a contenidos, sin texto adicional, sin markdown, sin ```json."
+          content: `Eres un ingeniero senior de automatización Java.
+          IMPORTANTE: Genera SOLO los archivos que se te piden explícitamente.
+          NO incluyas: pom.xml, serenity.conf, runners, ni archivos de configuración.
+          Devuelve SOLO un objeto JSON válido, sin texto adicional.`
         },
         { role: "user", content: prompt }
       ],
       temperature: 0.1,
-      max_tokens: 8000
+      max_tokens: 4000
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "";
-    console.log("📥 Raw OpenAI response:", raw);
+    console.log("📥 Raw OpenAI response recibida");
 
-    let files;
+    // Limpiar la respuesta
+    let cleaned = raw.trim();
+
+    // Eliminar markdown code blocks
+    if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
+    if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
+    if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
+    cleaned = cleaned.trim();
+
+    // Extraer solo el JSON
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+    }
+
+    console.log("🧹 Texto limpiado (primeros 200 chars):", cleaned.substring(0, 200) + "...");
+
+    let openaiFiles = {};
     try {
-      // Método robusto para extraer JSON
-      let cleaned = raw.trim();
+      openaiFiles = JSON.parse(cleaned);
+      console.log("✅ JSON parseado correctamente de OpenAI");
+    } catch(e) {
+      console.error("❌ Error parseando JSON de OpenAI:", e.message);
+      openaiFiles = {};
+    }
 
-      // Eliminar markdown code blocks
-      if (cleaned.startsWith('```json')) {
-        cleaned = cleaned.substring(7);
-      } else if (cleaned.startsWith('```')) {
-        cleaned = cleaned.substring(3);
-      }
+    // ========== CONSTRUIR PROYECTO DESDE CERO ==========
+    console.log("🏗️  Construyendo estructura del proyecto...");
 
-      if (cleaned.endsWith('```')) {
-        cleaned = cleaned.substring(0, cleaned.length - 3);
-      }
+    const files = {};
 
-      cleaned = cleaned.trim();
+    // 1. ARCHIVOS CRÍTICOS DEL SISTEMA (Siempre generados por nosotros)
+    console.log("🔧 Generando archivos críticos del sistema...");
 
-      // Buscar el primer { y el último }
-      const firstBrace = cleaned.indexOf('{');
-      const lastBrace = cleaned.lastIndexOf('}');
+        // A) POM.XML (siempre nuestra versión)
+        files['pom.xml'] = `<?xml version="1.0" encoding="UTF-8"?>
+    <project xmlns="http://maven.apache.org/POM/4.0.0"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+        <modelVersion>4.0.0</modelVersion>
+        <groupId>co.com.template.automation.testing</groupId>
+        <artifactId>serenity-automation-template</artifactId>
+        <version>1.0.0</version>
+        <properties>
+            <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+            <serenity.version>4.2.22</serenity.version>
+            <cucumber.version>7.20.1</cucumber.version>
+            <junit.version>5.11.0</junit.version>
+            <maven.compiler.source>21</maven.compiler.source>
+            <maven.compiler.target>21</maven.compiler.target>
+        </properties>
+        <dependencies>
+            <dependency>
+                <groupId>net.serenity-bdd</groupId>
+                <artifactId>serenity-core</artifactId>
+                <version>\${serenity.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.serenity-bdd</groupId>
+                <artifactId>serenity-cucumber</artifactId>
+                <version>\${serenity.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.serenity-bdd</groupId>
+                <artifactId>serenity-screenplay</artifactId>
+                <version>\${serenity.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.serenity-bdd</groupId>
+                <artifactId>serenity-screenplay-webdriver</artifactId>
+                <version>\${serenity.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.cucumber</groupId>
+                <artifactId>cucumber-junit-platform-engine</artifactId>
+                <version>\${cucumber.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-engine</artifactId>
+                <version>\${junit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>1.2.10</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.bonigarcia</groupId>
+                <artifactId>webdrivermanager</artifactId>
+                <version>5.7.0</version>
+            </dependency>
+        </dependencies>
+        <build>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.8.1</version>
+                    <configuration>
+                        <source>\${maven.compiler.source}</source>
+                        <target>\${maven.compiler.target}</target>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>net.serenity-bdd.maven.plugins</groupId>
+                    <artifactId>serenity-maven-plugin</artifactId>
+                    <version>\${serenity.version}</version>
+                    <executions>
+                        <execution>
+                            <id>serenity-reports</id>
+                            <phase>post-integration-test</phase>
+                            <goals><goal>aggregate</goal></goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </build>
+    </project>`;
 
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-      }
-
-      console.log("🧹 Texto limpiado:", cleaned.substring(0, 200) + "...");
-
-      files = JSON.parse(cleaned);
-      console.log("✅ JSON parseado correctamente");
-
-      // Aplanar la estructura
-      files = flattenFileStructure(files);
-
-    } catch(e){
-      console.error("❌ JSON parse error:", e.message);
-
-      // Intentar un fallback: buscar cualquier objeto JSON en el texto
-      try {
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          files = JSON.parse(jsonMatch[0]);
-          console.log("✅ JSON recuperado con fallback");
-          files = flattenFileStructure(files);
-        } else {
-          throw new Error("No se encontró JSON en la respuesta");
+        // B) SERENITY.CONF (nuestra versión)
+        files['src/test/resources/serenity.conf'] = `serenity {
+      project.name = "Serenity Automation Project"
+      logging = VERBOSE
+    }
+    webdriver {
+      driver = chrome
+    }
+    pages {
+      url = "${url || 'https://opensource-demo.orangehrmlive.com/'}"
+    }
+    environments {
+      local {
+        chrome {
+          webdriver.driver = chrome
+          switches = [
+            "--start-maximized",
+            "--ignore-certificate-errors",
+            "--incognito",
+            "--accept-insecure-certs",
+            "--disable-popup-blocking",
+            "--disable-infobars",
+            "--remote-allow-origins=*",
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--window-size=1920,1080"
+          ]
         }
-      } catch (fallbackError) {
-        console.error("❌ Fallback también falló:", fallbackError.message);
-        return res.status(500).json({
-          error: "OpenAI returned non-JSON",
-          raw: raw.substring(0, 1000),
-          suggestion: "La IA no está devolviendo JSON válido. Revisa el prompt."
-        });
       }
-    }
+    }`;
 
-    // Validar que files es un objeto
-    if (typeof files !== 'object' || files === null) {
-      console.error("❌ files no es un objeto válido:", typeof files);
-      return res.status(500).json({ error: "OpenAI response is not a valid object", files });
-    }
+        // C) RUNNER (nuestra versión)
+        files['src/test/java/co/com/template/automation/testing/runners/CucumberTestSuiteTest.java'] = `package co.com.template.automation.testing.runners;
+    import io.cucumber.junit.CucumberOptions;
+    import net.serenitybdd.cucumber.CucumberWithSerenity;
+    import org.junit.runner.RunWith;
+    @RunWith(CucumberWithSerenity.class)
+    @CucumberOptions(
+        plugin = {"pretty", "html:target/cucumber-reports/cucumber.html", "json:target/cucumber-reports/cucumber.json"},
+        features = "src/test/resources/features",
+        glue = "co.com.template.automation.testing.definitions",
+        snippets = CucumberOptions.SnippetType.CAMELCASE
+    )
+    public class CucumberTestSuiteTest {}`;
 
-    console.log("📁 Archivos recibidos:", Object.keys(files).length, "archivos");
+    // D) STEP URL (nuestra versión)
+        files['src/test/java/co/com/template/automation/testing/definitions/commons/StepUrl.java'] = `package co.com.template.automation.testing.definitions.commons;
+    import io.cucumber.java.en.Given;
+    import net.serenitybdd.screenplay.actions.Open;
+    import net.serenitybdd.screenplay.actors.OnStage;
+    public class StepUrl {
+        @Given("{string} abre la página web")
+        public void abreLaPáginaWeb(String actor) {
+            OnStage.theActorCalled(actor);
+            OnStage.theActorInTheSpotlight().wasAbleTo(Open.browserOn().thePageNamed("pages.url"));
+        }
+    }`;
 
-    // REEMPLAZAR EL POM.XML BÁSICO CON EL COMPLETO
-    console.log("🔄 Reemplazando pom.xml...");
-    files = replacePomXml(files);
-    console.log("✅ pom.xml reemplazado");
+        // 2. ARCHIVOS DE OPENAI (solo los que necesitamos)
+        console.log("🤖 Procesando archivos de OpenAI...");
 
-    // ========== LOGS DE DEPURACIÓN ==========
-    console.log("🔍 DEBUG: Tipos de contenido de archivos después del reemplazo:");
-    for(const [fname, content] of Object.entries(files)){
-      console.log(`  - ${fname}: tipo = ${typeof content}, es string = ${typeof content === 'string'}, es null = ${content === null}, es undefined = ${content === undefined}`);
-      if (typeof content !== 'string') {
-        console.log(`    ⚠️  CONTENIDO PROBLEMÁTICO: ${fname} no es string! Valor:`, content);
-      }
-    }
+        // Definir qué archivos esperamos de OpenAI
+        const openAIFilePaths = {
+          'UserQuestion.java': 'src/main/java/co/com/template/automation/testing/questions/UserQuestion.java',
+          'UserTask.java': 'src/main/java/co/com/template/automation/testing/tasks/UserTask.java',
+          'LoginPage.java': 'src/main/java/co/com/template/automation/testing/ui/LoginPage.java',
+          'ShadowDomUtils.java': 'src/main/java/co/com/template/automation/testing/utils/ShadowDomUtils.java',
+          'EnvironmentProperties.java': 'src/main/java/co/com/template/automation/testing/utils/EnvironmentProperties.java',
+          'Hooks.java': 'src/test/java/co/com/template/automation/testing/definitions/hooks/Hooks.java',
+          'FlujosDefinitions.java': 'src/test/java/co/com/template/automation/testing/definitions/FlujosDefinitions.java'
+        };
 
-    // Verificar específicamente el pom.xml
-    if (files['pom.xml']) {
-      console.log(`📊 pom.xml: tipo = ${typeof files['pom.xml']}, longitud = ${files['pom.xml'].length}`);
-    } else {
-      console.log("❌ pom.xml NO EXISTE en files!");
-    }
-    // ========== FIN DE LOGS DE DEPURACIÓN ==========
+        // Función para encontrar archivos en el objeto de OpenAI
+        function findFileInOpenAI(filename) {
+          // Buscar en todos los niveles del objeto
+          function search(obj, path = '') {
+            for (const [key, value] of Object.entries(obj)) {
+              const currentPath = path ? `${path}/${key}` : key;
 
-    // save files into output/job
-    const jobId = `job_${Date.now()}`;
-    const outDir = path.join(__dirname, "output", jobId);
-    fs.mkdirSync(outDir, { recursive: true });
-
-    console.log("💾 Guardando archivos en:", outDir);
-    for(const [fname, content] of Object.entries(files)){
-      const p = path.join(outDir, fname);
-
-      try {
-        fs.mkdirSync(path.dirname(p), { recursive: true });
-
-        // Asegurar que el contenido es string de manera más robusta
-        let contentStr;
-        if (typeof content === 'string') {
-          contentStr = content;
-        } else if (content === null || content === undefined) {
-          contentStr = '';
-          console.warn(`⚠️  Contenido nulo para ${fname}, usando string vacío`);
-        } else if (typeof content === 'object') {
-          contentStr = JSON.stringify(content, null, 2);
-          console.warn(`⚠️  Contenido es objeto para ${fname}, convirtiendo a JSON`);
-        } else {
-          contentStr = String(content);
+              if (typeof value === 'string') {
+                // Si el nombre coincide o contiene el nombre del archivo
+                if (key.includes(filename) || currentPath.includes(filename)) {
+                  return value;
+                }
+              } else if (typeof value === 'object' && value !== null) {
+                const found = search(value, currentPath);
+                if (found) return found;
+              }
+            }
+            return null;
+          }
+          return search(openaiFiles);
         }
 
-        console.log(`📄 Guardando ${fname} (${contentStr.length} caracteres)`);
-        fs.writeFileSync(p, contentStr, "utf8");
+        // Obtener archivos de OpenAI
+        for (const [shortName, fullPath] of Object.entries(openAIFilePaths)) {
+          const content = findFileInOpenAI(shortName);
+          if (content && content.length > 50) {
+            files[fullPath] = content;
+            console.log(`✅ ${fullPath} obtenido de OpenAI (${content.length} chars)`);
+          } else {
+            // Crear placeholder
+            const placeholder = `// ${shortName}\n// Archivo generado automáticamente\n// Contenido a implementar según necesidades\n`;
+            files[fullPath] = placeholder;
+            console.log(`⚠️  ${fullPath} no encontrado en OpenAI, usando placeholder`);
+          }
+        }
 
-      } catch (fileError) {
-        console.error(`❌ Error guardando ${fname}:`, fileError.message);
-        // Continuar con los demás archivos
+        // 3. FEATURE FILE (especial)
+        if (openaiFiles['src/test/resources/features/flujos.feature']) {
+          files['src/test/resources/features/flujos.feature'] = openaiFiles['src/test/resources/features/flujos.feature'];
+        } else if (openaiFiles['flujos.feature']) {
+          files['src/test/resources/features/flujos.feature'] = openaiFiles['flujos.feature'];
+        } else {
+          files['src/test/resources/features/flujos.feature'] = `Feature: Automation Flow
+      Scenario: Test Scenario
+        Given the user opens the application
+        When the user performs actions
+        Then the results should be verified`;
+        }
+
+        // 4. ARCHIVOS DE CONFIGURACIÓN BÁSICOS
+        console.log("⚙️  Agregando archivos de configuración...");
+
+        files['src/test/resources/junit-platform.properties'] = "cucumber.junit-platform.naming-strategy=long\ncucumber.plugin=pretty,html:target/cucumber-report.html";
+        files['src/test/resources/logback-test.xml'] = `<?xml version="1.0" encoding="UTF-8"?>
+    <configuration>
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder><pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern></encoder>
+        </appender>
+        <root level="INFO"><appender-ref ref="STDOUT" /></root>
+    </configuration>`;
+        files['.gitignore'] = "target/\n*.iml\n.idea/\n.DS_Store\n*.log\nnode_modules/\ndist/\nbuild/";
+        files['browserstack.yml'] = `browserstack:
+      user: "your_user"
+      key: "your_key"
+      browsers:
+        - browserName: chrome
+          browserVersion: latest
+          os: Windows
+          osVersion: 10`;
+        files['LICENSE'] = "MIT License\n\nCopyright (c) 2024 Automation Project";
+        files['README.md'] = `# Serenity BDD Automation Project\n\nProyecto generado automáticamente para automatización de pruebas.`;
+        files['serenity.properties'] = "serenity.project.name=serenity-automation-template\nserenity.take.screenshots=FOR_EACH_ACTION\nserenity.logging=VERBOSE\nwebdriver.driver=chrome";
+        files['sonar-project-custom.properties'] = "sonar.projectKey=co.com.template.automation.testing\nsonar.projectName=Serenity Automation Template\nsonar.projectVersion=1.0.0\nsonar.sources=src/main/java\nsonar.tests=src/test/java\nsonar.java.binaries=target/classes";
+
+        // ========== GUARDAR ARCHIVOS ==========
+        const jobId = `job_${Date.now()}`;
+        const outDir = path.join(__dirname, "output", jobId);
+        fs.mkdirSync(outDir, { recursive: true });
+
+        console.log(`💾 Guardando ${Object.keys(files).length} archivos en: ${outDir}`);
+
+        for(const [fname, content] of Object.entries(files)){
+          const p = path.join(outDir, fname);
+          try {
+            fs.mkdirSync(path.dirname(p), { recursive: true });
+            fs.writeFileSync(p, content, "utf8");
+            console.log(`   📄 ${fname} (${content.length} chars)`);
+          } catch (fileError) {
+            console.error(`❌ Error guardando ${fname}:`, fileError.message);
+          }
+        }
+
+        // ========== CREAR ZIP ==========
+        const zipPath = path.join(__dirname, "output", `${jobId}.zip`);
+        const zip = new AdmZip();
+        zip.addLocalFolder(outDir);
+        zip.writeZip(zipPath);
+
+        console.log("🎉 Proyecto generado exitosamente:", jobId);
+        res.json({ jobId, download: `/api/download/${jobId}`, fileCount: Object.keys(files).length });
+
+      } catch(err){
+        console.error("❌ transform error", err);
+        res.status(500).json({ error: err.message });
       }
-    }
+    });
 
-    const zipPath = path.join(__dirname, "output", `${jobId}.zip`);
-    const zip = new AdmZip();
-    zip.addLocalFolder(outDir);
-    zip.writeZip(zipPath);
+    // existing validate-locators (Playwright)
+    app.post("/api/validate-locators", async (req,res)=>{
+      const { baseUrl, selectors } = req.body;
+      if (!baseUrl || !selectors) return res.status(400).json({ error: "baseUrl/selectors required" });
+      const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+      const page = await browser.newPage();
+      const results = [];
+      try {
+          await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+          for(const s of selectors){
+            try{ await page.waitForSelector(s.selector, { timeout: 3000 }); results.push({ selector: s.selector, ok: true }); }
+            catch(e){ results.push({ selector: s.selector, ok: false, message: e.message }); }
+          }
+        } catch(e){ console.error(e); return res.status(500).json({ error: e.message }); } finally { await browser.close(); }
+        res.json({ total: selectors.length, results });
+      });
 
-    console.log("🎉 Proyecto generado exitosamente:", jobId);
-    res.json({ jobId, download: `/api/download/${jobId}` });
-  } catch(err){
-    console.error("❌ transform error", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+      // download
+      app.get("/api/download/:jobId", (req,res)=>{
+        const { jobId } = req.params;
+        const p = path.join(__dirname, "output", `${jobId}.zip`);
+        if (!fs.existsSync(p)) return res.status(404).send("Not found");
+        res.download(p);
+      });
 
-// existing validate-locators (Playwright)
-app.post("/api/validate-locators", async (req,res)=>{
-  const { baseUrl, selectors } = req.body;
-  if (!baseUrl || !selectors) return res.status(400).json({ error: "baseUrl/selectors required" });
-  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
-  const page = await browser.newPage();
-  const results = [];
-  try {
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
-    for(const s of selectors){
-      try{ await page.waitForSelector(s.selector, { timeout: 3000 }); results.push({ selector: s.selector, ok: true }); }
-      catch(e){ results.push({ selector: s.selector, ok: false, message: e.message }); }
-    }
-  } catch(e){ console.error(e); return res.status(500).json({ error: e.message }); } finally { await browser.close(); }
-  res.json({ total: selectors.length, results });
-});
+      // save recording
+      app.post("/api/record", (req,res)=>{
+        try {
+          const rec = req.body;
+          const id = `rec_${Date.now()}`;
+          const file = path.join(__dirname, "output", `${id}.json`);
+          fs.writeFileSync(file, JSON.stringify(rec, null, 2), "utf8");
+          res.json({ id, path: `/api/record/${id}` });
+        } catch(e){ res.status(500).json({ error: e.message }); }
+      });
 
-// download
-app.get("/api/download/:jobId", (req,res)=>{
-  const { jobId } = req.params;
-  const p = path.join(__dirname, "output", `${jobId}.zip`);
-  if (!fs.existsSync(p)) return res.status(404).send("Not found");
-  res.download(p);
-});
+      app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));
 
-// save recording
-app.post("/api/record", (req,res)=>{
-  try {
-    const rec = req.body;
-    const id = `rec_${Date.now()}`;
-    const file = path.join(__dirname, "output", `${id}.json`);
-    fs.writeFileSync(file, JSON.stringify(rec, null, 2), "utf8");
-    res.json({ id, path: `/api/record/${id}` });
-  } catch(e){ res.status(500).json({ error: e.message }); }
-});
-
-app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));
