@@ -1,0 +1,53 @@
+# Build outputs
+target/
+bin/
+build/
+out/
+dist/
+classes/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temp files
+tmp/
+temp/
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+
+# Serenity reports
+site/
+target/site/
+
+# Test reports
+test-output/
+test-results/
+
+# Environment files
+.env
+.env.local
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

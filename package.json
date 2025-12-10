@@ -1,0 +1,25 @@
+{
+  "name": "autogen_fullstack_final",
+  "version": "1.0.0",
+  "description": "AutoGen — Fullstack final 2 ========================",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LuisLopez84/AutoGen_FullStack_Final.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LuisLopez84/AutoGen_FullStack_Final/issues"
+  },
+  "homepage": "https://github.com/LuisLopez84/AutoGen_FullStack_Final#readme",
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0"
+  }
+}
