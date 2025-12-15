@@ -1,24 +1,39 @@
 import React, { useState } from "react";
 
-export default function TransformPanel({ backend, recording, onJob }){
+export default function TransformPanel({ backend, recording, onJob }) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [testData, setTestData] = useState('');
   const [flow, setFlow] = useState(''); // <- NUEVO ESTADO PARA EL FLUJO
 
-  async function transform(){
-    if(!recording || recording.length === 0) {
+  async function transform() {
+    if (!recording || recording.length === 0) {
       alert('❌ Primero carga una grabación válida');
       return;
     }
 
+    // === NUEVA VALIDACIÓN - URL OBLIGATORIA ===
+    if (!url || url.trim() === '') {
+      alert('❌ La URL Base de la Aplicación es obligatoria. Por favor, ingresa la URL donde se realizará la automatización.');
+      return;
+    }
+
+    // Validar que sea una URL válida
+    try {
+      new URL(url);
+    } catch (e) {
+      alert('❌ URL inválida. Por favor, ingresa una URL válida (ej: https://www.ejemplo.com)');
+      return;
+    }
+    // === FIN VALIDACIÓN ===
+
     setLoading(true);
-    try{
+    try {
       const payload = {
         recording,
-        url: url || "https://ejemplo.com",
+        url: url, // Usamos la URL ingresada por el usuario
         testData: testData ? JSON.parse(testData) : {},
-        flow: flow || "Automation Flow" // <- AGREGAR FLUJO AL PAYLOAD
+        flow: flow || "Automation Flow"
       };
 
       const resp = await fetch(`${backend}/api/transform-recording`, {
@@ -29,14 +44,14 @@ export default function TransformPanel({ backend, recording, onJob }){
 
       const json = await resp.json();
 
-      if(resp.ok && json.jobId){
+      if (resp.ok && json.jobId) {
         onJob(json);
         alert('✅ Proyecto generado exitosamente: ' + json.jobId);
       } else {
         alert('❌ Error: ' + (json.error || 'Error desconocido'));
         console.error('Transform error:', json);
       }
-    } catch(e){
+    } catch (e) {
       alert('❌ Error de conexión: ' + e.message);
       console.error('Network error:', e);
     } finally {
@@ -48,7 +63,7 @@ export default function TransformPanel({ backend, recording, onJob }){
     <div className="transform-panel">
       <h3>🛠️ Generar Proyecto de Automatización Web</h3>
 
-      {/* NUEVO CAMPO PARA EL FLUJO */}
+      {/* CAMPO DE FLUJO */}
       <div className="form-group">
         <label>📝 Nombre del Flujo (opcional)</label>
         <input
@@ -58,13 +73,37 @@ export default function TransformPanel({ backend, recording, onJob }){
         />
       </div>
 
+      {/* === CAMPO DE URL MODIFICADO - AHORA ES OBLIGATORIO === */}
       <div className="form-group">
-        <label>🌐 URL Base de la Aplicación (opcional)</label>
+        <label>
+          🌐 URL Base de la Aplicación <span style={{ color: 'red' }}>*</span>
+          <span style={{
+            fontSize: '12px',
+            color: '#666',
+            marginLeft: '8px',
+            fontWeight: 'normal'
+          }}>
+            (obligatorio)
+          </span>
+        </label>
         <input
           value={url}
           onChange={e => setUrl(e.target.value)}
           placeholder="https://tu-aplicacion.com"
+          required
+          style={{
+            borderColor: url.trim() === '' ? '#e74c3c' : '#ddd',
+            borderWidth: url.trim() === '' ? '2px' : '1px'
+          }}
         />
+        <small style={{
+          display: 'block',
+          color: '#666',
+          fontSize: '12px',
+          marginTop: '5px'
+        }}>
+          Ingresa la URL completa de la aplicación web que deseas automatizar
+        </small>
       </div>
 
       <div className="form-group">
@@ -91,7 +130,13 @@ export default function TransformPanel({ backend, recording, onJob }){
           </p>
         )}
 
-        {recording && (
+        {recording && !url.trim() && (
+          <p className="warning-text" style={{ color: '#e74c3c' }}>
+            ⚠️ Debes ingresar la URL Base de la Aplicación para generar el proyecto
+          </p>
+        )}
+
+        {recording && url.trim() && (
           <p className="info-text">
             📝 Listo para generar proyecto con {recording.length} pasos grabados
           </p>

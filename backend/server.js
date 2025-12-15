@@ -31,19 +31,35 @@ app.post("/api/transform-recording", async (req, res) => {
 
     if (!recording) return res.status(400).json({ error: "recording required" });
 
-    // Extraer URL principal de la grabación
-    const mainUrl = extractMainUrl(recording.steps || []);
-    const finalUrl = userUrl || mainUrl;
+    // HACER LA URL OBLIGATORIA - CAMBIO PRINCIPAL
+    if (!userUrl) {
+      return res.status(400).json({
+        error: "URL Base de la Aplicación es obligatoria. Por favor, ingresa la URL donde se realizará la automatización."
+      });
+    }
 
-    if (!finalUrl) return res.status(400).json({ error: "URL is required for dynamic generation" });
+    // Validar que la URL sea válida
+    try {
+      new URL(userUrl);
+    } catch (e) {
+      return res.status(400).json({
+        error: "URL inválida. Por favor, ingresa una URL válida (ej: https://www.ejemplo.com)"
+      });
+    }
+
+    // Ya no extraemos URL del recording, usamos la que proporciona el usuario
+    const finalUrl = userUrl;
 
     // Extraer dominio para nombres de clases
     const domainName = extractDomainName(finalUrl);
     const projectId = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
-    console.log(`🌐 Generando proyecto para URL: ${finalUrl}`);
+    console.log(`🌐 Generando proyecto para URL OBLIGATORIA: ${finalUrl}`);
     console.log(`🏷️  Domain name: ${domainName}`);
     console.log(`📊 Recording steps: ${recording.steps?.length || 0}`);
+
+    // Eliminar o simplificar la lógica de extracción de URL del recording
+    // Ya que ahora la URL es obligatoria del usuario
 
     // Usar la URL extraída en el prompt
     const prompt = buildDynamicPrompt({
@@ -453,24 +469,25 @@ function extractDomainName(url) {
   }
 }
 
-// En server.js, después de la función extractDomainName, agregar:
+// Modificar la función extractMainUrl para que sea más efectiva:
 function extractMainUrl(steps) {
   try {
     if (!steps || steps.length === 0) {
-      return 'https://example.com';
+      return null; // Retornar null si no hay pasos
     }
 
-    // Buscar la URL más frecuente en los pasos
+    // 1. Primero intentar encontrar la URL más frecuente en page_load
     const urlCounts = {};
     steps.forEach(step => {
       if (step.url && step.url !== '') {
+        // Limpiar la URL (remover query parameters y fragments)
         const cleanUrl = step.url.split('?')[0].split('#')[0];
         urlCounts[cleanUrl] = (urlCounts[cleanUrl] || 0) + 1;
       }
     });
 
     // Encontrar la URL más común
-    let mainUrl = 'https://example.com';
+    let mainUrl = null;
     let maxCount = 0;
 
     Object.entries(urlCounts).forEach(([url, count]) => {
@@ -480,11 +497,43 @@ function extractMainUrl(steps) {
       }
     });
 
-    return mainUrl;
+    // 2. Si no encontramos una URL común, buscar la primera URL válida
+    if (!mainUrl) {
+      for (const step of steps) {
+        if (step.url &&
+            step.url.startsWith('http') &&
+            !step.url.includes('mail.google.com') &&
+            !step.url.includes('auth.openai.com') &&
+            !step.url.includes('cursos.raiola.link')) {
+          // Filtrar URLs que no son de la aplicación objetivo
+          mainUrl = step.url.split('?')[0].split('#')[0];
+          break;
+        }
+      }
+    }
+
+    // 3. Para casos específicos como las grabaciones proporcionadas
+    if (mainUrl) {
+      // Si es Mercado Libre
+      if (mainUrl.includes('mercadolibre.com.co')) {
+        return 'https://www.mercadolibre.com.co/';
+      }
+      // Si es Bancolombia
+      if (mainUrl.includes('bancolombia.com')) {
+        return 'https://www.bancolombia.com/personas';
+      }
+      return mainUrl;
+    }
+
+    return null;
   } catch (e) {
-    return 'https://example.com';
+    console.error('Error extracting main URL:', e);
+    return null;
   }
 }
+
+
+
 
 function generateDynamicFeatureWithScenarios(recording, domainName, mainUrl) {
   const steps = recording.steps || [];
@@ -769,8 +818,10 @@ function generatePomXml(projectId) {
 
 
 function generateSerenityConf(url, domainName) {
-  // Usar la URL proporcionada o una por defecto
-  const baseUrl = url || "${baseUrl}";
+  // La URL ahora es OBLIGATORIA, no debe tener fallback
+  const finalUrl = url || 'https://ejemplo.com'; // URL por defecto si por alguna razón está vacía
+
+  console.log(`🔧 URL OBLIGATORIA en serenity.conf: ${finalUrl}`);
 
   return `serenity {
   project.name = "${domainName} Automation"
@@ -781,7 +832,7 @@ function generateSerenityConf(url, domainName) {
 
 environments {
   default {
-    webdriver.base.url = "${baseUrl}"
+    webdriver.base.url = "${finalUrl}"
   }
 
   chrome {
