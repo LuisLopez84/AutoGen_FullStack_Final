@@ -27,22 +27,34 @@ app.use((req,res,next)=>{ console.log(new Date().toISOString(), req.method, req.
 // Transform recording -> project files (calls OpenAI)
 app.post("/api/transform-recording", async (req, res) => {
   try {
-    const { recording, url, testData, flow, projectName = "automation-project" } = req.body;
+    const { recording, url: userUrl, testData, flow, projectName = "automation-project" } = req.body;
 
     if (!recording) return res.status(400).json({ error: "recording required" });
-    if (!url) return res.status(400).json({ error: "URL is required for dynamic generation" });
+
+    // Extraer URL principal de la grabación
+    const mainUrl = extractMainUrl(recording.steps || []);
+    const finalUrl = userUrl || mainUrl;
+
+    if (!finalUrl) return res.status(400).json({ error: "URL is required for dynamic generation" });
 
     // Extraer dominio para nombres de clases
-    const domainName = extractDomainName(url);
+    const domainName = extractDomainName(finalUrl);
     const projectId = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
-    console.log(`🌐 Generando proyecto para: ${url}`);
+    console.log(`🌐 Generando proyecto para URL: ${finalUrl}`);
     console.log(`🏷️  Domain name: ${domainName}`);
     console.log(`📊 Recording steps: ${recording.steps?.length || 0}`);
 
-    const prompt = buildDynamicPrompt({ recording, url, testData, flow, domainName });
+    // Usar la URL extraída en el prompt
+    const prompt = buildDynamicPrompt({
+      recording,
+      url: finalUrl,
+      testData,
+      flow,
+      domainName
+    });
 
-    console.log("📤 Enviando prompt a OpenAI...");
+    // En la llamada a OpenAI, actualizar el system prompt:
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -50,24 +62,41 @@ app.post("/api/transform-recording", async (req, res) => {
           role: "system",
           content: `Eres un ingeniero senior de automatización Java con experiencia en Serenity BDD Screenplay.
 
-IMPORTANTE: Genera un proyecto COMPLETO y FUNCIONAL para automatizar el flujo proporcionado.
-INSTRUCCIONES ESPECÍFICAS:
-1. Analiza la grabación y crea Page Objects específicos para los elementos interactuados
-2. Genera Tasks que representen las acciones del usuario
-3. Genera Questions para las verificaciones necesarias
-4. Crea un feature file con escenarios realistas
-5. Genera Step Definitions que conecten el feature con las Tasks y Questions
-6. Usa nombres descriptivos basados en la URL/dominio (${domainName})
-7. Asegúrate que el código sea ejecutable
-8. Incluye manejo de esperas y robustez
+    IMPORTANTE: Genera un proyecto COMPLETO y FUNCIONAL basado en la grabación proporcionada.
+    REGLAS CRÍTICAS:
+    1. Usa la URL principal proporcionada (${finalUrl}) en todos los archivos de configuración
+    2. Genera MÚLTIPLES ESCENARIOS en el feature file (mínimo 3: 2 exitosos + 1 de error)
+    3. Palabras Gherkin (Given/When/Then) en INGLÉS, descripciones en ESPAÑOL
+    4. Los escenarios deben basarse en el flujo real de la grabación
+    5. Incluir manejo de errores y validaciones negativas
+    6. Usar selectores CSS robustos basados en los elementos de la grabación
+    7. Incluir esperas explícitas para elementos dinámicos
+    8. Usar Ensure.that() para todas las verificaciones
+    9. El código debe ser ejecutable inmediatamente después de generado
 
-NO incluyas: pom.xml, serenity.conf, runners, hooks, ni archivos de configuración.`
+    ESTRUCTURA DE FEATURE FILE REQUERIDA:
+    Feature: [Nombre descriptivo]
+
+      # Escenarios exitosos
+      Scenario: [Nombre en español - flujo normal]
+        Given [en inglés]
+          "[descripción en español]"
+
+      # Escenarios de error
+      Scenario: [Nombre en español - validación negativa]
+        Given [en inglés]
+          "[descripción en español]"
+
+    NO incluyas: pom.xml, serenity.conf, runners, hooks, ni archivos de configuración.`
         },
         { role: "user", content: prompt }
       ],
       temperature: 0.1,
       max_tokens: 8000
     });
+
+    console.log("📤 Enviando prompt a OpenAI...");
+
     const raw = completion.choices?.[0]?.message?.content ?? "";
     console.log("📥 Raw OpenAI response recibida");
 
@@ -96,7 +125,7 @@ NO incluyas: pom.xml, serenity.conf, runners, hooks, ni archivos de configuraci�
      }
 
      // ========== CONSTRUIR PROYECTO DINÁMICO ==========
-     console.log(`🏗️  Construyendo proyecto dinámico para ${url}...`);
+     console.log(`🏗️  Construyendo proyecto dinámico para ${finalUrl}...`);
      const files = {};
 
      // 1. ARCHIVOS CRÍTICOS DEL SISTEMA (Dinámicos)
@@ -106,7 +135,7 @@ NO incluyas: pom.xml, serenity.conf, runners, hooks, ni archivos de configuraci�
      files['pom.xml'] = generatePomXml(projectId);
 
      // B) SERENITY.CONF (dinámico con la URL proporcionada)
-     files['src/test/resources/serenity.conf'] = generateSerenityConf(url, domainName);
+     files['src/test/resources/serenity.conf'] = generateSerenityConf(finalUrl, domainName);
 
      // C) RUNNER (genérico)
      files['src/test/java/co/com/template/automation/testing/runners/CucumberTestSuiteTest.java'] = generateRunner();
@@ -135,9 +164,14 @@ NO incluyas: pom.xml, serenity.conf, runners, hooks, ni archivos de configuraci�
     others: {}
     };
 
+    // Limpiar feature files de OpenAI
     for (const [filePath, content] of Object.entries(openaiFiles)) {
-     if (filePath.includes('.feature')) {
-        openaiFilesByCategory.features[filePath] = content;
+      if (filePath.includes('.feature')) {
+        const cleanedContent = generateCleanFeature(content, domainName);
+        if (cleanedContent) {
+          openaiFiles[filePath] = cleanedContent;
+        }
+        openaiFilesByCategory.features[filePath] = openaiFiles[filePath];
       } else if (filePath.includes('/definitions/')) {
         openaiFilesByCategory.definitions[filePath] = content;
       } else if (filePath.includes('/ui/')) {
@@ -319,7 +353,7 @@ NO incluyas: pom.xml, serenity.conf, runners, hooks, ni archivos de configuraci�
  allFiles['src/test/resources/junit-platform.properties'] = "cucumber.junit-platform.naming-strategy=long\ncucumber.plugin=pretty,html:target/cucumber-report.html";
  allFiles['src/test/resources/logback-test.xml'] = generateLogbackConfig();
  allFiles['.gitignore'] = generateGitignore();
- allFiles['README.md'] = generateReadme(url, domainName);
+ allFiles['README.md'] = generateReadme(finalUrl, domainName);
  allFiles['serenity.properties'] = generateSerenityProperties(projectId);
 
  // Si hay testData, crear un archivo de datos de prueba
@@ -361,7 +395,7 @@ for(const [fname, content] of Object.entries(allFiles)){
 
         console.log("🎉 Proyecto generado exitosamente!");
         console.log(`📦 Job ID: ${jobId}`);
-        console.log(`🌐 URL: ${url}`);
+        console.log(`🌐 URL: ${finalUrl}`);
         console.log(`📁 Total archivos: ${Object.keys(allFiles).length}`);
 
         res.json({
@@ -370,7 +404,7 @@ for(const [fname, content] of Object.entries(allFiles)){
           download: `/api/download/${jobId}`,
           fileCount: Object.keys(allFiles).length,
           domain: domainName,
-          url: url,
+          url: finalUrl,
           warnings: validationResult.warnings
         });
 
@@ -385,22 +419,217 @@ for(const [fname, content] of Object.entries(allFiles)){
 
 // ========== FUNCIONES AUXILIARES ==========
 
+// Modificar también la función extractDomainName para que sea más robusta:
 function extractDomainName(url) {
   try {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname;
+
     // Extraer nombre del dominio sin extensiones
     const domainParts = hostname.split('.');
-    let domain = domainParts.length > 1 ? domainParts[domainParts.length - 2] : hostname;
 
-    // Capitalizar primera letra y eliminar caracteres inválidos
-    domain = domain.charAt(0).toUpperCase() + domain.slice(1);
-    domain = domain.replace(/[^a-zA-Z0-9]/g, '');
+    // Para casos como "www.mercadolibre.com.co"
+    if (domainParts.length >= 2) {
+      // Tomar el penúltimo segmento (mercadolibre)
+      let domain = domainParts[domainParts.length - 2];
 
-    return domain || 'WebPage';
+      // Capitalizar primera letra y eliminar caracteres inválidos
+      domain = domain.charAt(0).toUpperCase() + domain.slice(1);
+      domain = domain.replace(/[^a-zA-Z0-9]/g, '');
+
+      // Si el dominio es muy corto (como 'co' o 'com'), tomar otro segmento
+      if (domain.length <= 2 && domainParts.length >= 3) {
+        domain = domainParts[domainParts.length - 3];
+        domain = domain.charAt(0).toUpperCase() + domain.slice(1);
+        domain = domain.replace(/[^a-zA-Z0-9]/g, '');
+      }
+
+      return domain || 'WebPage';
+    }
+
+    return 'WebPage';
   } catch (e) {
     return 'WebPage';
   }
+}
+
+// En server.js, después de la función extractDomainName, agregar:
+function extractMainUrl(steps) {
+  try {
+    if (!steps || steps.length === 0) {
+      return 'https://example.com';
+    }
+
+    // Buscar la URL más frecuente en los pasos
+    const urlCounts = {};
+    steps.forEach(step => {
+      if (step.url && step.url !== '') {
+        const cleanUrl = step.url.split('?')[0].split('#')[0];
+        urlCounts[cleanUrl] = (urlCounts[cleanUrl] || 0) + 1;
+      }
+    });
+
+    // Encontrar la URL más común
+    let mainUrl = 'https://example.com';
+    let maxCount = 0;
+
+    Object.entries(urlCounts).forEach(([url, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mainUrl = url;
+      }
+    });
+
+    return mainUrl;
+  } catch (e) {
+    return 'https://example.com';
+  }
+}
+
+function generateDynamicFeatureWithScenarios(recording, domainName, mainUrl) {
+  const steps = recording.steps || [];
+
+  // Analizar el flujo para identificar acciones clave
+  const keyActions = analyzeKeyActions(steps);
+
+  // Generar feature con múltiples escenarios (solo español, sin detalles en inglés)
+  let feature = `Feature: Validación funcional flujos ${domainName}
+
+  # URL Base: ${mainUrl}
+  # Total pasos grabados: ${steps.length}
+  # Generado automáticamente desde grabación de usuario
+
+  Scenario: Escenario exitoso - Navegación y búsqueda básica
+    Given que navego a la página principal de ${domainName}
+    When busco un producto en la barra de búsqueda
+    Then debo ver los resultados de búsqueda
+
+  Scenario: Escenario exitoso - Selección y visualización de producto
+    Given que estoy en la página de resultados de búsqueda
+    When selecciono un producto específico de la lista
+    Then debo ver los detalles del producto seleccionado
+
+  Scenario: Escenario de error - Intento de acción sin autenticación
+    Given que estoy viendo los detalles de un producto
+    When intento agregar al carrito sin estar autenticado
+    Then debo ver el mensaje que requiere inicio de sesión
+
+  Scenario: Escenario de error - Formulario con datos inválidos
+    Given que estoy en la página de registro
+    When ingreso un formato de email inválido
+    Then debo ver el mensaje de error de validación
+
+  Scenario: Escenario exitoso - Registro de nuevo usuario
+    Given que estoy en el formulario de registro
+    When completo el registro con datos válidos
+    Then debo ver la confirmación de registro exitoso`;
+
+  return feature;
+}
+
+function generateCleanFeature(openaiFeatureContent, domainName) {
+  if (!openaiFeatureContent) return '';
+
+  let cleaned = openaiFeatureContent;
+
+  // Reemplazar el nombre del dominio en el Feature
+  cleaned = cleaned.replace(/Feature:.*/, `Feature: Validación funcional flujos ${domainName}`);
+
+  // Eliminar detalles en inglés de los pasos Gherkin y las descripciones en español
+  cleaned = cleaned.replace(/Given[^"]+"[^"]+"/g, (match) => {
+    // Extraer solo la descripción en español
+    const spanishMatch = match.match(/"([^"]+)"/);
+    if (spanishMatch) {
+      return `    Dado ${spanishMatch[1]}`;
+    }
+    return match;
+  });
+
+  cleaned = cleaned.replace(/When[^"]+"[^"]+"/g, (match) => {
+    const spanishMatch = match.match(/"([^"]+)"/);
+    if (spanishMatch) {
+      return `    Cuando ${spanishMatch[1]}`;
+    }
+    return match;
+  });
+
+  cleaned = cleaned.replace(/Then[^"]+"[^"]+"/g, (match) => {
+    const spanishMatch = match.match(/"([^"]+)"/);
+    if (spanishMatch) {
+      return `    Entonces ${spanishMatch[1]}`;
+    }
+    return match;
+  });
+
+  cleaned = cleaned.replace(/And[^"]+"[^"]+"/g, (match) => {
+    const spanishMatch = match.match(/"([^"]+)"/);
+    if (spanishMatch) {
+      return `    Y ${spanishMatch[1]}`;
+    }
+    return match;
+  });
+
+  cleaned = cleaned.replace(/But[^"]+"[^"]+"/g, (match) => {
+    const spanishMatch = match.match(/"([^"]+)"/);
+    if (spanishMatch) {
+      return `    Pero ${spanishMatch[1]}`;
+    }
+    return match;
+  });
+
+  return cleaned;
+}
+
+// Función auxiliar para analizar acciones clave
+function analyzeKeyActions(steps) {
+  const actions = {
+    clicks: 0,
+    inputs: 0,
+    navigations: 0,
+    validations: 0
+  };
+
+  steps.forEach(step => {
+    const action = step.action?.toLowerCase() || '';
+
+    if (action.includes('click')) actions.clicks++;
+    if (action.includes('input') || action.includes('type')) actions.inputs++;
+    if (action.includes('page_load') || action.includes('navigate')) actions.navigations++;
+    if (action.includes('verify') || action.includes('check')) actions.validations++;
+  });
+
+  return actions;
+}
+
+
+// Agregar en server.js:
+function enhanceSelectors(steps) {
+  return steps.map(step => {
+    if (!step.element) return step;
+
+    const enhancedStep = { ...step };
+    const element = step.element;
+
+    // Mejorar selector si existe
+    if (element.selector) {
+      // Priorizar IDs
+      if (element.id) {
+        enhancedStep.element.enhancedSelector = `#${element.id}`;
+      }
+      // Luego clases específicas
+      else if (element.className && element.className.includes(' ')) {
+        const classSelector = element.tagName.toLowerCase() +
+          '.' + element.className.split(' ').join('.');
+        enhancedStep.element.enhancedSelector = classSelector;
+      }
+      // Usar el selector original como fallback
+      else {
+        enhancedStep.element.enhancedSelector = element.selector;
+      }
+    }
+
+    return enhancedStep;
+  });
 }
 
 function generatePomXml(projectId) {
@@ -410,17 +639,21 @@ function generatePomXml(projectId) {
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <groupId>co.com.automation</groupId>
     <artifactId>${projectId}</artifactId>
     <version>1.0.0</version>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <serenity.version>4.2.22</serenity.version>
-        <cucumber.version>7.20.1</cucumber.version>
-        <junit.version>5.11.0</junit.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <serenity.version>4.0.18</serenity.version>
+        <serenity.maven.version>4.0.18</serenity.maven.version>
+        <cucumber.version>7.14.0</cucumber.version>
+        <junit.version>4.13.1</junit.version>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>net.serenity-bdd</groupId>
@@ -429,7 +662,7 @@ function generatePomXml(projectId) {
         </dependency>
         <dependency>
             <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-cucumber</artifactId>
+            <artifactId>serenity-junit</artifactId>
             <version>\${serenity.version}</version>
         </dependency>
         <dependency>
@@ -439,61 +672,92 @@ function generatePomXml(projectId) {
         </dependency>
         <dependency>
             <groupId>net.serenity-bdd</groupId>
-            <artifactId>serenity-screenplay-webdriver</artifactId>
+            <artifactId>serenity-cucumber</artifactId>
             <version>\${serenity.version}</version>
         </dependency>
         <dependency>
+            <groupId>net.serenity-bdd</groupId>
+            <artifactId>serenity-ensure</artifactId>
+            <version>\${serenity.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>io.cucumber</groupId>
-            <artifactId>cucumber-junit-platform-engine</artifactId>
+            <artifactId>cucumber-java</artifactId>
             <version>\${cucumber.version}</version>
-         </dependency>
-         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
             <version>\${junit.version}</version>
-         </dependency>
-         <dependency>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.2.10</version>
+            <version>1.2.11</version>
         </dependency>
+
         <dependency>
             <groupId>io.github.bonigarcia</groupId>
             <artifactId>webdrivermanager</artifactId>
             <version>5.7.0</version>
         </dependency>
-        <!-- Dependencias para mejoras -->
-        <dependency>
-            <groupId>org.awaitility</groupId>
-            <artifactId>awaitility</artifactId>
-            <version>4.2.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>3.14.0</version>
-        </dependency>
     </dependencies>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>3.11.0</version>
                 <configuration>
                     <source>\${maven.compiler.source}</source>
                     <target>\${maven.compiler.target}</target>
                 </configuration>
             </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M9</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.0.0-M9</version>
+                <configuration>
+                    <includes>
+                        <include>**/CucumberTestSuiteTest.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>net.serenity-bdd.maven.plugins</groupId>
                 <artifactId>serenity-maven-plugin</artifactId>
-                <version>\${serenity.version}</version>
+                <version>\${serenity.maven.version}</version>
                 <executions>
                     <execution>
                         <id>serenity-reports</id>
                         <phase>post-integration-test</phase>
-                        <goals><goal>aggregate</goal></goals>
+                        <goals>
+                            <goal>aggregate</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>
@@ -502,7 +766,12 @@ function generatePomXml(projectId) {
 </project>`;
 }
 
+
+
 function generateSerenityConf(url, domainName) {
+  // Usar la URL proporcionada o una por defecto
+  const baseUrl = url || "${baseUrl}";
+
   return `serenity {
   project.name = "${domainName} Automation"
   take.screenshots = FOR_EACH_ACTION
@@ -512,7 +781,7 @@ function generateSerenityConf(url, domainName) {
 
 environments {
   default {
-    webdriver.base.url = "${url}"
+    webdriver.base.url = "${baseUrl}"
   }
 
   chrome {
@@ -554,49 +823,49 @@ environments {
     }
   }
 }
-// Configuración específica de páginas
- pages {
-   url = "\${webdriver.base.url}"
-   timeout = 10000
- }
 
- // Timeouts globales
- timeouts {
-   fluentwait = 30000
-   implicitlywait = 10000
-   pageload = 60000
-   script = 30000
- }`;
- }
+pages {
+  url = "\${webdriver.base.url}"
+  timeout = 10000
+}
+
+timeouts {
+  fluentwait = 30000
+  implicitlywait = 10000
+  pageload = 60000
+  script = 30000
+}`;
+}
+
 
 function generateDefaultFeature(recording, domainName) {
   const steps = recording.steps || [];
-  let feature = `Feature: ${domainName} Automation - Recorded Flow
+  let feature = `Feature: Validación funcional flujos ${domainName}
 
-  Scenario: Execute recorded automation flow
-    Given Dado que abro la aplicación ${domainName}`;
+  Scenario: Ejecutar flujo grabado
+    Dado que abro la aplicación ${domainName}`;
 
-  // Agregar pasos dinámicos basados en la grabación
+  // Agregar pasos dinámicos basados en la grabación (solo en español)
   steps.forEach((step, index) => {
-    const stepType = step.action?.toLowerCase() || 'perform';
-    const element = step.element || 'element';
+    const stepType = step.action?.toLowerCase() || 'realizar';
+    const element = step.element?.tagName || step.element?.selector || 'elemento';
     const value = step.value || '';
     const stepNumber = index + 1;
 
     if (stepType.includes('click')) {
-      feature += `\n    When Cuando hago clic en ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando hago clic en ${element} (paso ${stepNumber})`;
     } else if (stepType.includes('type') || stepType.includes('input')) {
-      feature += `\n    When Cuando ingreso "${value}" en ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando ingreso "${value}" en ${element} (paso ${stepNumber})`;
     } else if (stepType.includes('select')) {
-      feature += `\n    When Cuando selecciono "${value}" de ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando selecciono "${value}" de ${element} (paso ${stepNumber})`;
     } else if (stepType.includes('verify') || stepType.includes('check')) {
-      feature += `\n    Then Entonces debo ver "${value}" en ${element} (paso ${stepNumber})`;
+      feature += `\n    Entonces debo ver "${value}" en ${element} (paso ${stepNumber})`;
     } else {
-      feature += `\n    When Cuando ${stepType} ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando ${stepType} ${element} (paso ${stepNumber})`;
     }
   });
 
-  feature += `\n    Then Entonces la automatización se completa exitosamente`;
+  feature += `\n    Entonces la automatización se completa exitosamente`;
 
   return feature;
 }
@@ -630,45 +899,39 @@ public class ${domainName}Page extends PageObject {
 
 function generateDynamicFeature(recording, flow, domainName) {
   const steps = recording.steps || [];
-  let feature = `Feature: ${flow || domainName + ' Automation'}
+  let feature = `Feature: Validación funcional flujos ${domainName}
 
-  # Palabras clave en inglés, descripciones en español
-  Scenario: Execute recorded flow
-    Given Dado que estoy en la aplicación ${domainName}`;
+  # Palabras clave en español
+  Scenario: Ejecutar flujo grabado
+    Dado que estoy en la aplicación ${domainName}`;
 
-  // Agregar pasos dinámicos basados en la grabación
+  // Agregar pasos dinámicos basados en la grabación (solo en español)
   steps.forEach((step, index) => {
-    const stepType = step.action?.toLowerCase() || 'perform';
-    const element = step.element || 'element';
+    const stepType = step.action?.toLowerCase() || 'realizar';
+    const element = step.element?.tagName || step.element?.selector || 'elemento';
     const value = step.value || '';
     const stepNumber = index + 1;
 
     if (stepType.includes('click')) {
-      feature += `
-    When Cuando hago clic en ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando hago clic en ${element} (paso ${stepNumber})`;
     } else if (stepType.includes('type') || stepType.includes('input') || stepType.includes('enter')) {
-      feature += `
-    When Cuando ingreso "${value}" en ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando ingreso "${value}" en ${element} (paso ${stepNumber})`;
     } else if (stepType.includes('select')) {
-      feature += `
-    When Cuando selecciono "${value}" de ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando selecciono "${value}" de ${element} (paso ${stepNumber})`;
     } else if (stepType.includes('verify') || stepType.includes('check') || stepType.includes('should')) {
-      feature += `
-    Then Entonces debo ver "${value}" en ${element} (paso ${stepNumber})`;
+      feature += `\n    Entonces debo ver "${value}" en ${element} (paso ${stepNumber})`;
     } else if (stepType.includes('navigate') || stepType.includes('go')) {
-      feature += `
-    When Cuando navego a ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando navego a ${element} (paso ${stepNumber})`;
     } else {
-      feature += `
-    When Cuando ${stepType} ${element} (paso ${stepNumber})`;
+      feature += `\n    Cuando ${stepType} ${element} (paso ${stepNumber})`;
     }
   });
 
-  feature += `
-    Then Entonces la automatización se completa exitosamente`;
+  feature += `\n    Entonces la automatización se completa exitosamente`;
 
   return feature;
 }
+
 
 function generateDynamicDefinitions(domainName, recording) {
   return `package co.com.template.automation.testing.definitions;
@@ -1236,6 +1499,7 @@ import net.serenitybdd.screenplay.targets.Target;
 public class ${pageName} extends PageObject {${targets}
     }`;
 }
+
 
 // existing validate-locators (Playwright)
 app.post("/api/validate-locators", async (req,res)=>{
