@@ -10,36 +10,57 @@ export function buildDynamicPrompt({ recording, url, testData, flow, domainName 
     url: step.url || mainUrl
   }));
 
-  return `Eres un ingeniero senior de automatización Java con Serenity BDD y Screenplay Pattern.
+  return `ERES UN INGENIERO DE AUTOMATIZACIÓN SENIOR ESPECIALIZADO EN SERENITY BDD.
 
-IMPORTANTE: Estás generando código para la grabación: ${domainName}
+IMPORTANTE ABSOLUTO: DEBES SEGUIR ESTE FORMATO EXACTO PARA EL FEATURE FILE:
+
+1. PALABRAS GIVEN/WHEN/THEN/AND/BUT SIEMPRE EN INGLÉS
+2. DESCRIPCIÓN COMPLETA DEL STEP ENTRE COMILLAS DOBLES EN ESPAÑOL
+3. FORMATO: Given "descripción completa en español"
+4. NO MEZCLAR IDIOMAS DENTRO DEL MISMO STEP
+
+EJEMPLO CORRECTO OBLIGATORIO:
+  Scenario: Escenario exitoso - Buscar producto
+    Given "el usuario navega a la página principal de Mercado Libre"
+    When "busca 'televisores' en la barra de búsqueda"
+    Then "debe ver una lista de resultados de búsqueda"
+
+EJEMPLO INCORRECTO (NO PERMITIDO):
+  Scenario: Escenario exitoso - Buscar producto
+    Given I am on the Mercado Libre homepage
+    When I search for "televisores"
+    Then I should see search results
+
+---
+
+GENERA LOS SIGUIENTES ARCHIVOS PARA: ${domainName}
 URL: ${mainUrl}
-Total pasos: ${steps.length}
+Total pasos grabados: ${steps.length}
 
-GENERA LOS SIGUIENTES ARCHIVOS para ESTA GRABACIÓN ESPECÍFICA:
+ARCHIVOS REQUERIDOS:
 
-1. FEATURE FILE (nombre: ${domainName.toLowerCase()}.feature):
-   - Usar el nombre "${domainName}" en todos los nombres de clase
+1. FEATURE FILE (${domainName.toLowerCase()}.feature):
    - Mínimo 3 escenarios (2 exitosos + 1 de error)
-   - Nombres descriptivos en español
-   - Given/When/Then en inglés
+   - Todos los steps en formato: Given/When/Then "descripción en español"
+   - Nombres de escenarios descriptivos en español
 
-2. STEP DEFINITIONS (nombre: ${domainName}Definitions.java):
-   - @Given, @When, @Then en INGLÉS
-   - Métodos descriptivos en español
-   - Usar Serenity Screenplay
+2. STEP DEFINITIONS (${domainName}Definitions.java):
+   - @Given, @When, @Then con texto en INGLÉS
+   - Métodos con nombres descriptivos en español
+   - Usar Serenity Screenplay Pattern
 
-3. PAGE OBJECTS (nombre: ${domainName}Page.java):
-   - Usar selectores CSS robustos
-   - Incluir elementos para validaciones
+3. PAGE OBJECTS (${domainName}Page.java):
+   - Selectores CSS robustos basados en la grabación
 
-4. TASKS (nombre: ${domainName}Task.java):
+4. TASKS (${domainName}Task.java):
    - Tasks para acciones exitosas y de error
    - Usar instrumented() para instanciación
 
-5. QUESTIONS (nombre: ${domainName}Question.java):
+5. QUESTIONS (${domainName}Question.java):
    - Questions para verificaciones
-   - Usar Ensure.that() para verificaciones
+   - Usar Ensure.that() para validaciones
+
+---
 
 DEVUELVE UN JSON CON LA SIGUIENTE ESTRUCTURA:
 
@@ -55,8 +76,12 @@ DEVUELVE UN JSON CON LA SIGUIENTE ESTRUCTURA:
   "src/main/java/co/com/template/automation/testing/questions/${domainName}Question.java": "package co.com.template.automation.testing.questions;\\n\\npublic class ${domainName}Question { ... }"
 }
 
-PASOS GRABADOS PARA ANALIZAR (primeros 50):
-${JSON.stringify(detailedSteps, null, 2)}`;
+---
+
+INFORMACIÓN DE LA GRABACIÓN (primeros 50 pasos):
+${JSON.stringify(detailedSteps, null, 2)}
+
+RECUERDA: TODOS LOS STEPS DEL FEATURE DEBEN SER EN FORMATO: Given "texto en español"`;
 }
 
 
