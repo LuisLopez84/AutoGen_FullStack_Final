@@ -433,6 +433,185 @@ for(const [fname, content] of Object.entries(allFiles)){
       }
     });
 
+
+
+
+  app.post("/api/transform-recordings", async (req, res) => {
+    try {
+      const { recordings, url: userUrl, testData, flow, projectName = "automation-project" } = req.body;
+
+      if (!recordings || !Array.isArray(recordings) || recordings.length === 0) {
+        return res.status(400).json({ error: "Se requiere al menos una grabación" });
+      }
+
+      if (!userUrl) {
+        return res.status(400).json({
+          error: "URL Base de la Aplicación es obligatoria."
+        });
+      }
+
+      try {
+        new URL(userUrl);
+      } catch (e) {
+        return res.status(400).json({
+          error: "URL inválida."
+        });
+      }
+
+      const finalUrl = userUrl;
+      const domainName = extractDomainName(finalUrl);
+      const projectId = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+      console.log(`🌐 Generando proyecto con ${recordings.length} grabaciones para: ${finalUrl}`);
+
+      // Preparar respuesta acumulativa
+      let allFiles = {};
+
+      // Procesar cada grabación individualmente
+      for (let i = 0; i < recordings.length; i++) {
+        const recording = recordings[i].data;
+        const recordingName = recordings[i].name || `Recording${i + 1}`;
+        const safeRecordingName = recordingName.replace(/[^a-zA-Z0-9]/g, '');
+
+        console.log(`📝 Procesando grabación ${i + 1}: ${safeRecordingName}`);
+
+        // Construir prompt para esta grabación
+        const prompt = buildDynamicPrompt({
+          recording,
+          url: finalUrl,
+          testData,
+          flow: `${flow} - ${safeRecordingName}`,
+          domainName: safeRecordingName
+        });
+
+        // Llamar a OpenAI para esta grabación
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `Eres un ingeniero senior de automatización Java con experiencia en Serenity BDD Screenplay.
+
+  IMPORTANTE: Genera código COMPLETO y FUNCIONAL para la grabación proporcionada.
+  NOMBRE DE LA GRABACIÓN: ${safeRecordingName}
+  URL BASE: ${finalUrl}
+
+  REGLAS:
+  1. Genera MÚLTIPLES ESCENARIOS (2 exitosos + 1 de error)
+  2. Usa el nombre "${safeRecordingName}" en todos los archivos generados
+  3. Palabras Gherkin en INGLÉS, descripciones en ESPAÑOL
+  4. Incluir manejo de errores y validaciones
+  5. Usar selectores CSS robustos basados en la grabación`
+            },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 4000
+        });
+
+        const raw = completion.choices?.[0]?.message?.content ?? "";
+        let openaiFiles = {};
+
+        try {
+          const jsonMatch = raw.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const cleaned = jsonMatch[0]
+              .replace(/```json\n?/g, '')
+              .replace(/```\n?/g, '');
+            openaiFiles = JSON.parse(cleaned);
+          }
+        } catch(e) {
+        console.error(`❌ Error parseando JSON para ${safeRecordingName}:`, e.message);
+              }
+
+              // Renombrar archivos para evitar conflictos
+              const renamedFiles = {};
+              for (const [filePath, content] of Object.entries(openaiFiles)) {
+                const newPath = filePath
+                  .replace(/\.feature$/, `-${safeRecordingName}.feature`)
+                  .replace(/Definitions\.java$/, `${safeRecordingName}Definitions.java`)
+                  .replace(/Page\.java$/, `${safeRecordingName}Page.java`)
+                  .replace(/Task\.java$/, `${safeRecordingName}Task.java`)
+                  .replace(/Question\.java$/, `${safeRecordingName}Question.java`)
+                  .replace(/\/${domainName}\//g, `/${safeRecordingName}/`)
+                  .replace(domainName, safeRecordingName);
+
+                // También actualizar referencias internas en el contenido
+                let updatedContent = content
+                  .replace(new RegExp(`class ${domainName}`, 'g'), `class ${safeRecordingName}`)
+                  .replace(new RegExp(`${domainName}\\.`, 'g'), `${safeRecordingName}.`);
+
+                renamedFiles[newPath] = updatedContent;
+              }
+
+              // Agregar al conjunto total de archivos
+              Object.assign(allFiles, renamedFiles);
+            }
+
+            // AGREGAR ARCHIVOS DEL SISTEMA (solo una vez)
+            console.log("🔧 Generando archivos del sistema...");
+
+            // Archivos de configuración (solo una vez)
+            allFiles['pom.xml'] = generatePomXml(projectId);
+            allFiles['src/test/resources/serenity.conf'] = generateSerenityConf(finalUrl, domainName);
+            allFiles['src/test/java/co/com/template/automation/testing/runners/CucumberTestSuiteTest.java'] = generateMultiFlowRunner(recordings);
+            allFiles['src/test/java/co/com/template/automation/testing/definitions/commons/StepUrl.java'] = generateStepUrl();
+            allFiles['src/test/java/co/com/template/automation/testing/definitions/hooks/Hooks.java'] = generateHooks();
+            allFiles['src/main/java/co/com/template/automation/testing/utils/EnvironmentProperties.java'] = generateEnvironmentProperties();
+            allFiles['src/main/java/co/com/template/automation/testing/utils/ShadowDomUtils.java'] = generateShadowDomUtils();
+            allFiles['src/main/java/co/com/template/automation/testing/utils/WaitUtils.java'] = generateWaitUtils();
+            allFiles['src/test/resources/logback-test.xml'] = generateLogbackConfig();
+            allFiles['.gitignore'] = generateGitignore();
+            allFiles['README.md'] = generateMultiFlowReadme(finalUrl, domainName, recordings);
+            allFiles['serenity.properties'] = generateSerenityProperties(projectId);
+
+            // Crear feature principal que importe todos los features
+            allFiles['src/test/resources/features/AllFeatures.feature'] = generateMasterFeature(recordings);
+
+            // ========== GUARDAR ARCHIVOS ==========
+            const jobId = `multi_project_${Date.now()}_${domainName}`;
+            const outDir = path.join(__dirname, "output", jobId);
+            fs.mkdirSync(outDir, { recursive: true });
+
+            console.log(`💾 Guardando ${Object.keys(allFiles).length} archivos en: ${outDir}`);
+
+            for(const [fname, content] of Object.entries(allFiles)){
+              const p = path.join(outDir, fname);
+              try {
+                fs.mkdirSync(path.dirname(p), { recursive: true });
+                fs.writeFileSync(p, content, "utf8");
+              } catch (fileError) {
+                console.error(`❌ Error guardando ${fname}:`, fileError.message);
+              }
+            }
+
+            // Crear ZIP
+            const zipPath = path.join(__dirname, "output", `${jobId}.zip`);
+            const zip = new AdmZip();
+            zip.addLocalFolder(outDir);
+            zip.writeZip(zipPath);
+
+            console.log("🎉 Proyecto multi-flujo generado exitosamente!");
+
+            res.json({
+              success: true,
+              jobId,
+              download: `/api/download/${jobId}`,
+              fileCount: Object.keys(allFiles).length,
+              domain: domainName,
+              url: finalUrl,
+              recordingCount: recordings.length
+            });
+
+          } catch(err) {
+            console.error("❌ transform-recordings error", err);
+            res.status(500).json({
+              error: err.message,
+              stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+            });
+          }
+        });
+
 // ========== FUNCIONES AUXILIARES ==========
 
 // Modificar también la función extractDomainName para que sea más robusta:
@@ -531,9 +710,6 @@ function extractMainUrl(steps) {
     return null;
   }
 }
-
-
-
 
 function generateDynamicFeatureWithScenarios(recording, domainName, mainUrl) {
   const steps = recording.steps || [];
@@ -814,8 +990,6 @@ function generatePomXml(projectId) {
     </build>
 </project>`;
 }
-
-
 
 function generateSerenityConf(url, domainName) {
   // La URL ahora es OBLIGATORIA, no debe tener fallback
@@ -1550,6 +1724,101 @@ import net.serenitybdd.screenplay.targets.Target;
 public class ${pageName} extends PageObject {${targets}
     }`;
 }
+
+
+
+function generateMultiFlowRunner(recordings) {
+  const features = recordings.map((rec, i) => {
+    const name = rec.name || `Recording${i + 1}`;
+    const safeName = name.replace(/[^a-zA-Z0-9]/g, '');
+    return `      "classpath:features/${safeName.toLowerCase()}.feature",`;
+  }).join('\n');
+
+  return `package co.com.template.automation.testing.runners;
+
+import io.cucumber.junit.CucumberOptions;
+import net.serenitybdd.cucumber.CucumberWithSerenity;
+import org.junit.runner.RunWith;
+
+@RunWith(CucumberWithSerenity.class)
+@CucumberOptions(
+    plugin = {
+        "pretty",
+        "html:target/cucumber-reports/cucumber.html",
+        "json:target/cucumber-reports/cucumber.json",
+        "timeline:target/cucumber-reports/timeline"
+    },
+    features = {
+${features}
+    },
+    glue = {
+        "co.com.template.automation.testing.definitions",
+        "co.com.template.automation.testing.definitions.commons",
+        "co.com.template.automation.testing.definitions.hooks"
+    },
+    snippets = CucumberOptions.SnippetType.CAMELCASE,
+    tags = "@regression"
+)
+public class CucumberTestSuiteTest {
+}`;
+}
+
+function generateMasterFeature(recordings) {
+  let masterFeature = `Feature: Suite de Automatización Completa
+
+  # Este feature incluye todos los flujos grabados
+  # Total de flujos: ${recordings.length}
+
+`;
+
+  recordings.forEach((rec, i) => {
+    const name = rec.name || `Recording${i + 1}`;
+    const safeName = name.replace(/[^a-zA-Z0-9]/g, '');
+    masterFeature += `
+  @include:${safeName.toLowerCase()}`;
+  });
+
+  return masterFeature;
+}
+
+function generateMultiFlowReadme(url, domainName, recordings) {
+  let readme = `# ${domainName} Automation Project - Múltiples Flujos
+
+## Descripción
+Proyecto de automatización generado automáticamente para la URL: ${url}
+Contiene ${recordings.length} flujos de automatización diferentes.
+
+## Flujos Incluidos
+`;
+
+  recordings.forEach((rec, i) => {
+    const name = rec.name || `Recording${i + 1}`;
+    readme += `${i + 1}. **${name}** - ${rec.data.steps?.length || 0} pasos grabados\n`;
+  });
+
+  readme += `
+## Estructura del Proyecto
+\`\`\`
+src/
+├── main/java/co/com/template/automation/testing/
+│   ├── ui/          # Page Objects (uno por flujo)
+│   ├── tasks/       # Screenplay Tasks (uno por flujo)
+│   └── questions/   # Screenplay Questions (uno por flujo)
+└── test/java/co/com/template/automation/testing/
+    ├── definitions/ # Step Definitions (uno por flujo)
+    ├── runners/     # Test Runner (único)
+    └── hooks/       # Cucumber Hooks (únicos)
+\`\`\`
+`;
+
+  return readme;
+}
+
+
+
+
+
+
 
 
 // existing validate-locators (Playwright)

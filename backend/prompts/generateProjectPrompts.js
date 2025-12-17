@@ -1,100 +1,62 @@
-// En generateProjectPrompt.js, actualizar buildDynamicPrompt:
 export function buildDynamicPrompt({ recording, url, testData, flow, domainName }) {
   const steps = recording.steps || [];
   const mainUrl = url || extractMainUrl(steps) || "${baseUrl}";
 
-  // Generar pasos detallados para el análisis de GPT
-  const detailedSteps = steps.slice(0, 50).map((step, index) => {
-    return {
-      step: index + 1,
-      action: step.action,
-      element: step.element?.selector || step.element?.tagName || 'unknown',
-      value: step.value || '',
-      url: step.url || mainUrl
-    };
-  });
+  const detailedSteps = steps.slice(0, 50).map((step, index) => ({
+    step: index + 1,
+    action: step.action,
+    element: step.element?.selector || step.element?.tagName || 'unknown',
+    value: step.value || '',
+    url: step.url || mainUrl
+  }));
 
   return `Eres un ingeniero senior de automatización Java con Serenity BDD y Screenplay Pattern.
 
-ANALIZA ESTA GRABACIÓN DE USUARIO y genera código de automatización COMPLETO:
+IMPORTANTE: Estás generando código para la grabación: ${domainName}
+URL: ${mainUrl}
+Total pasos: ${steps.length}
 
-URL PRINCIPAL DETECTADA: ${mainUrl}
-DOMINIO: ${domainName}
-TOTAL PASOS: ${steps.length}
-FLUJO GRABADO: ${flow || 'Flujo de usuario'}
+GENERA LOS SIGUIENTES ARCHIVOS para ESTA GRABACIÓN ESPECÍFICA:
 
-IMPORTANTE - ESTRUCTURA CORRECTA DE ARCHIVOS:
-1. Palabras clave Gherkin (Dado, Cuando, Entonces, Y, Pero) en INGLES
-2. NO incluir descripciones en inglés
-3. NO incluir descripciones adicionales entre comillas
-4. Generar MÚLTIPLES ESCENARIOS: exitosos y de error
-5. Formato de feature file:
-   Feature: Validación funcional flujos ${domainName}
-
-   Scenario: Escenario exitoso - [descripción en español]
-     Given [paso completo en español]
-     When [paso completo en español]
-     Then [paso completo en español]
-
-   Scenario: Escenario de error - [descripción en español]
-     Given [paso completo en español]
-     When [paso completo en español]
-     Then [paso completo en español]
-
-PASOS GRABADOS PARA ANALIZAR (primeros 50):
-${JSON.stringify(detailedSteps, null, 2)}
-
-GENERA LOS SIGUIENTES ARCHIVOS:
-
-1. FEATURE FILE CON MÚLTIPLES ESCENARIOS:
+1. FEATURE FILE (nombre: ${domainName.toLowerCase()}.feature):
+   - Usar el nombre "${domainName}" en todos los nombres de clase
    - Mínimo 3 escenarios (2 exitosos + 1 de error)
-   - Escenarios exitosos: flujo normal de usuario
-   - Escenarios de error: validaciones negativas, datos incorrectos
    - Nombres descriptivos en español
    - Given/When/Then en inglés
 
-2. STEP DEFINITIONS (JAVA - Screenplay Pattern):
+2. STEP DEFINITIONS (nombre: ${domainName}Definitions.java):
    - @Given, @When, @Then en INGLÉS
    - Métodos descriptivos en español
-   - Usar Serenity Screenplay (OnStage, Task, Question)
-   - Manejar tanto escenarios exitosos como de error
+   - Usar Serenity Screenplay
 
-3. PAGE OBJECTS (JAVA):
-   - Generar páginas según los elementos interactuados
-   - Usar selectores CSS robustos basados en la grabación
-   - Incluir elementos para validaciones de error
+3. PAGE OBJECTS (nombre: ${domainName}Page.java):
+   - Usar selectores CSS robustos
+   - Incluir elementos para validaciones
 
-4. TASKS (JAVA - Screenplay):
-   - Tasks para acciones exitosas
-   - Tasks para acciones que generan errores
+4. TASKS (nombre: ${domainName}Task.java):
+   - Tasks para acciones exitosas y de error
    - Usar instrumented() para instanciación
 
-5. QUESTIONS (JAVA - Screenplay):
-   - Questions para verificaciones exitosas
-   - Questions para verificaciones de error
+5. QUESTIONS (nombre: ${domainName}Question.java):
+   - Questions para verificaciones
    - Usar Ensure.that() para verificaciones
 
 DEVUELVE UN JSON CON LA SIGUIENTE ESTRUCTURA:
 
 {
-  "src/test/resources/features/${domainName.toLowerCase()}.feature": "Feature: Validación funcional flujos ${domainName}\\n\\n  Scenario: Escenario exitoso - [descripción]\\n    Given [paso]\\n      \\\"Descripción\\\"\\n    When [paso]\\n      \\\"Descripción\\\"\\n    Then [paso]\\n      \\\"Descripción\\\"\\n\\n  Scenario: Escenario de error - [descripción]\\n    Given [paso]\\n      \\\"Descripción\\\"\\n    When [paso]\\n      \\\"Descripción\\\"\\n    Then [paso]\\n      \\\"Descripción\\\"",
+  "src/test/resources/features/${domainName.toLowerCase()}.feature": "Feature: ${domainName} Automation\\n\\n  Scenario: Escenario exitoso 1...",
 
-  "src/test/java/co/com/template/automation/testing/definitions/${domainName}Definitions.java": "[código Java]",
+  "src/test/java/co/com/template/automation/testing/definitions/${domainName}Definitions.java": "package co.com.template.automation.testing.definitions;\\n\\npublic class ${domainName}Definitions { ... }",
 
-  "src/main/java/co/com/template/automation/testing/ui/${domainName}Page.java": "[código Java]",
+  "src/main/java/co/com/template/automation/testing/ui/${domainName}Page.java": "package co.com.template.automation.testing.ui;\\n\\npublic class ${domainName}Page { ... }",
 
-  "src/main/java/co/com/template/automation/testing/tasks/${domainName}Task.java": "[código Java]",
+  "src/main/java/co/com/template/automation/testing/tasks/${domainName}Task.java": "package co.com.template.automation.testing.tasks;\\n\\npublic class ${domainName}Task { ... }",
 
-  "src/main/java/co/com/template/automation/testing/questions/${domainName}Question.java": "[código Java]"
+  "src/main/java/co/com/template/automation/testing/questions/${domainName}Question.java": "package co.com.template.automation.testing.questions;\\n\\npublic class ${domainName}Question { ... }"
 }
 
-REGLAS IMPORTANTES:
-1. La URL ${mainUrl} DEBE usarse en todos los archivos de configuración
-2. Generar selectores CSS robustos basados en los elementos de la grabación
-3. Incluir manejo de esperas (WaitUntil) en todos los Tasks
-4. Usar Ensure.that() para todas las verificaciones
-5. Los escenarios deben ser realistas basados en la grabación
-6. Incluir comentarios en español explicando la lógica`;
+PASOS GRABADOS PARA ANALIZAR (primeros 50):
+${JSON.stringify(detailedSteps, null, 2)}`;
 }
 
 

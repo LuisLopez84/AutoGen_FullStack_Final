@@ -6,37 +6,39 @@ export default function TransformPanel({ backend, recording, onJob }) {
   const [testData, setTestData] = useState('');
   const [flow, setFlow] = useState(''); // <- NUEVO ESTADO PARA EL FLUJO
 
+  // SOLO UNA FUNCIÓN transform() - ESTA ES LA CORRECTA:
   async function transform() {
+    // Si recording es un array (múltiples grabaciones)
     if (!recording || recording.length === 0) {
-      alert('❌ Primero carga una grabación válida');
+      alert('❌ Primero carga al menos una grabación válida');
       return;
     }
 
-    // === NUEVA VALIDACIÓN - URL OBLIGATORIA ===
+    // Validación de URL (obligatoria)
     if (!url || url.trim() === '') {
-      alert('❌ La URL Base de la Aplicación es obligatoria. Por favor, ingresa la URL donde se realizará la automatización.');
+      alert('❌ La URL Base de la Aplicación es obligatoria.');
       return;
     }
 
-    // Validar que sea una URL válida
     try {
       new URL(url);
     } catch (e) {
-      alert('❌ URL inválida. Por favor, ingresa una URL válida (ej: https://www.ejemplo.com)');
+      alert('❌ URL inválida. Por favor, ingresa una URL válida');
       return;
     }
-    // === FIN VALIDACIÓN ===
 
     setLoading(true);
     try {
+      // PARA MÚLTIPLES GRABACIONES - USAR ESTE PAYLOAD:
       const payload = {
-        recording,
-        url: url, // Usamos la URL ingresada por el usuario
+        recordings: recording, // Array de grabaciones (plural)
+        url: url,
         testData: testData ? JSON.parse(testData) : {},
-        flow: flow || "Automation Flow"
+        flow: flow || "Multi-Flow Automation"
       };
 
-      const resp = await fetch(`${backend}/api/transform-recording`, {
+      // USAR LA RUTA PARA MÚLTIPLES GRABACIONES:
+      const resp = await fetch(`${backend}/api/transform-recordings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -46,10 +48,9 @@ export default function TransformPanel({ backend, recording, onJob }) {
 
       if (resp.ok && json.jobId) {
         onJob(json);
-        alert('✅ Proyecto generado exitosamente: ' + json.jobId);
+        alert(`✅ Proyecto generado exitosamente con ${recording.length} flujo(s)`);
       } else {
         alert('❌ Error: ' + (json.error || 'Error desconocido'));
-        console.error('Transform error:', json);
       }
     } catch (e) {
       alert('❌ Error de conexión: ' + e.message);
@@ -58,6 +59,7 @@ export default function TransformPanel({ backend, recording, onJob }) {
       setLoading(false);
     }
   }
+  // ¡AQUÍ TERMINA LA FUNCIÓN transform()! NO HAY MÁS CÓDIGO DEBAJO
 
   return (
     <div className="transform-panel">

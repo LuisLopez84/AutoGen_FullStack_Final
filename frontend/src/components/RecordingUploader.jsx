@@ -1,17 +1,55 @@
 import React, { useState } from "react";
 
 export default function RecordingUploader({ onLoad }) {
+  const [files, setFiles] = useState([]);
+  const [fileNames, setFileNames] = useState([]);
+
   const onFile = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const txt = await f.text();
-    try {
-      const j = JSON.parse(txt);
-      onLoad(j);
-      alert('✅ Archivo de grabación cargado exitosamente');
-    } catch (e) {
-      alert('❌ Error: Archivo JSON inválido');
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    const validRecordings = [];
+    const validFileNames = [];
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const f = selectedFiles[i];
+      try {
+        const txt = await f.text();
+        const j = JSON.parse(txt);
+
+        if (j.steps && Array.isArray(j.steps)) {
+          validRecordings.push({
+            data: j,
+            name: f.name.replace('.json', ''),
+            fileName: f.name
+          });
+          validFileNames.push(f.name);
+        } else {
+          console.warn(`Archivo ${f.name} no tiene estructura válida de grabación`);
+        }
+      } catch (e) {
+        console.error(`Error procesando ${f.name}:`, e);
+      }
     }
+
+    if (validRecordings.length > 0) {
+      setFiles(validRecordings);
+      setFileNames(validFileNames);
+      onLoad(validRecordings);
+      alert(`✅ ${validRecordings.length} grabación(es) cargada(s) exitosamente`);
+    } else {
+      alert('❌ Error: Ningún archivo JSON válido encontrado');
+    }
+  };
+
+  const removeFile = (index) => {
+    const newFiles = [...files];
+    const newFileNames = [...fileNames];
+    newFiles.splice(index, 1);
+    newFileNames.splice(index, 1);
+    setFiles(newFiles);
+    setFileNames(newFileNames);
+    onLoad(newFiles);
   };
 
   return (
@@ -30,7 +68,7 @@ export default function RecordingUploader({ onLoad }) {
         textAlign: "center",
         fontSize: "24px"
       }}>
-        📤 Cargar Grabación
+        📤 Cargar Múltiples Grabaciones
       </h2>
 
       <p style={{
@@ -39,7 +77,7 @@ export default function RecordingUploader({ onLoad }) {
         marginBottom: 30,
         lineHeight: 1.5
       }}>
-        Selecciona el archivo JSON generado por el complemento AutoGen QA Recorder
+        Selecciona múltiples archivos JSON generados por el complemento AutoGen QA Recorder
       </p>
 
       <div style={{
@@ -55,14 +93,14 @@ export default function RecordingUploader({ onLoad }) {
           marginBottom: 15,
           color: "#3498db"
         }}>
-          📄
+          📂
         </div>
 
         <h3 style={{
           color: "#2c3e50",
           marginBottom: 10
         }}>
-          Subir archivo .json
+          Subir múltiples archivos .json
         </h3>
 
         <p style={{
@@ -70,7 +108,7 @@ export default function RecordingUploader({ onLoad }) {
           marginBottom: 20,
           fontSize: "14px"
         }}>
-          Arrastra y suelta tu archivo JSON o haz clic para seleccionarlo
+          Arrastra y suelta tus archivos JSON o haz clic para seleccionar múltiples
         </p>
 
         <label style={{
@@ -83,11 +121,12 @@ export default function RecordingUploader({ onLoad }) {
           fontWeight: "500",
           transition: "background-color 0.3s ease"
         }}>
-          📂 Seleccionar archivo JSON
+          📂 Seleccionar archivos JSON
           <input
             type="file"
             accept=".json"
             onChange={onFile}
+            multiple
             style={{
               display: "none"
             }}
@@ -99,9 +138,69 @@ export default function RecordingUploader({ onLoad }) {
           fontSize: "12px",
           color: "#999"
         }}>
-          Formatos aceptados: .json | Tamaño máximo: 10MB
+          Selecciona múltiples .json | Máx 10 archivos | Tamaño máximo por archivo: 10MB
         </p>
       </div>
+
+      {/* Lista de archivos cargados */}
+      {files.length > 0 && (
+        <div style={{
+          marginTop: 30,
+          padding: 20,
+          backgroundColor: "#f8f9fa",
+          borderRadius: 8,
+          border: "1px solid #dee2e6"
+        }}>
+          <h4 style={{
+            color: "#2c3e50",
+            marginBottom: 15,
+            display: "flex",
+            alignItems: "center",
+            gap: 8
+          }}>
+            📋 Archivos Cargados ({files.length})
+          </h4>
+
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            {files.map((file, index) => (
+              <div key={index} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '10px',
+                backgroundColor: 'white',
+                borderRadius: '5px',
+                border: '1px solid #e9ecef'
+              }}>
+                <div>
+                  <span style={{ fontWeight: 'bold' }}>{file.name}</span>
+                  <span style={{ fontSize: '12px', color: '#666', marginLeft: '10px' }}>
+                    ({file.data.steps?.length || 0} pasos)
+                  </span>
+                </div>
+                <button
+                  onClick={() => removeFile(index)}
+                  style={{
+                    background: '#e74c3c',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  ❌
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Información adicional */}
       <div style={{
@@ -126,9 +225,10 @@ export default function RecordingUploader({ onLoad }) {
           paddingLeft: 20,
           fontSize: "14px"
         }}>
-          <li>Asegúrate de que el archivo JSON fue generado por el complemento AutoGen QA Recorder</li>
-          <li>El archivo debe contener los pasos grabados de tu flujo de prueba</li>
-          <li>Después de cargar el archivo, podrás generar tu proyecto de automatización</li>
+          <li>Puedes cargar múltiples grabaciones de un mismo portal web</li>
+          <li>Cada grabación generará su propio archivo .feature y clases Java asociadas</li>
+          <li>Los nombres de las clases se generarán automáticamente basados en el nombre del archivo</li>
+          <li>Todos los archivos compartirán la misma URL base y configuración</li>
         </ul>
       </div>
     </div>

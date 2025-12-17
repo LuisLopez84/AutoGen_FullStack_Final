@@ -60,7 +60,7 @@ export default function App(){
                 </div>
                 {recording && (
                   <div className="status-item">
-                    <span className="label">Pasos grabados:</span>
+                    <span className="label">Flujos cargados:</span>
                     <span className="value info">{recording.length}</span>
                   </div>
                 )}
