@@ -84,14 +84,14 @@ app.post("/api/transform-recording", async (req, res) => {
 
         2. EJEMPLOS CORRECTOS (OBLIGATORIO):
            Scenario: Escenario exitoso - Login de usuario
-             Given "el usuario navega a la página de inicio de sesión"
-             When "ingresa credenciales válidas en el formulario"
-             Then "debe ser redirigido al dashboard principal"
+             Given el usuario navega a la página de inicio de sesión
+             When ingresa credenciales válidas en el formulario
+             Then debe ser redirigido al dashboard principal
 
            Scenario: Escenario de error - Credenciales inválidas
-             Given "el usuario está en la página de login"
-             When "ingresa un usuario incorrecto y contraseña errónea"
-             Then "debe ver un mensaje de error de autenticación"
+             Given el usuario está en la página de login
+             When ingresa un usuario incorrecto y contraseña errónea
+             Then debe ver un mensaje de error de autenticación
 
         3. EJEMPLOS INCORRECTOS (PROHIBIDOS):
            ❌ Given I am on the login page
@@ -103,8 +103,8 @@ app.post("/api/transform-recording", async (req, res) => {
 
         5. VALIDACIÓN: Antes de entregar, verifica que:
            - Ningún step comience con "I am", "I click", "I enter", "I should"
-           - Todos los steps tengan comillas dobles
-           - El texto dentro de comillas esté completamente en español
+           - Todos los steps NO tengan comillas dobles
+           - El texto dentro de LOS STEPS esté completamente en español
 
         URL BASE: ${finalUrl}
         Dominio: ${domainName}
@@ -368,11 +368,31 @@ app.post("/api/transform-recording", async (req, res) => {
      allFiles[fname] = content;
   }
 
-  // Luego agregar archivos de OpenAI (sobrescribiendo si es necesario)
+  // Luego agregar archivos de OpenAI con validación de nombres
   for (const category of ['features', 'definitions', 'pages', 'tasks', 'questions', 'others']) {
-     for (const [filePath, content] of Object.entries(openaiFileMap[category])) {
-       allFiles[filePath] = content;
-     }
+    for (const [filePath, content] of Object.entries(openaiFileMap[category])) {
+      // Validar y corregir nombres duplicados
+      const fileName = path.basename(filePath, path.extname(filePath));
+      const cleanFileName = validateAndCleanFileName(fileName, domainName);
+
+      if (cleanFileName !== fileName) {
+        // Construir nueva ruta con nombre corregido
+        const dirPath = path.dirname(filePath);
+        const extension = path.extname(filePath);
+        const cleanFilePath = path.join(dirPath, cleanFileName + extension);
+
+        // Actualizar referencias en el contenido
+        let cleanContent = content;
+        cleanContent = cleanContent.replace(
+          new RegExp(`\\bclass ${fileName}\\b`, 'g'),
+          `class ${cleanFileName}`
+        );
+
+        allFiles[cleanFilePath] = cleanContent;
+      } else {
+        allFiles[filePath] = content;
+      }
+    }
   }
 
   // 5. ARCHIVOS DE CONFIGURACIÓN ADICIONALES
@@ -488,7 +508,20 @@ app.post("/api/transform-recordings", async (req, res) => {
       for (let i = 0; i < recordings.length; i++) {
         const recording = recordings[i].data;
         const recordingName = recordings[i].name || `Recording${i + 1}`;
-        const safeRecordingName = recordingName.replace(/[^a-zA-Z0-9]/g, '');
+        // Limpiar y normalizar el nombre de la grabación
+        const safeRecordingName = recordingName
+          .replace(/[^a-zA-Z0-9]/g, '') // Remover caracteres especiales
+          .replace(/^(Celulares|Computadores|Televisores).*$/i, (match) => {
+            // Normalizar nombres comunes
+            const normalized = match.charAt(0).toUpperCase() + match.slice(1).toLowerCase();
+            return normalized.replace(/putadores$/i, '');
+          })
+          .replace(/(Celulares|Computadores|Televisores)\1+/i, '$1'); // Remover duplicados
+
+        // Si el nombre es muy largo, truncarlo
+        if (safeRecordingName.length > 20) {
+          safeRecordingName = safeRecordingName.substring(0, 20);
+        }
 
         console.log(`📝 Procesando grabación ${i + 1}: ${safeRecordingName}`);
 
@@ -541,22 +574,56 @@ app.post("/api/transform-recordings", async (req, res) => {
         console.error(`❌ Error parseando JSON para ${safeRecordingName}:`, e.message);
               }
 
-              // Renombrar archivos para evitar conflictos
+              // Renombrar archivos para evitar conflictos - VERSIÓN CORREGIDA
               const renamedFiles = {};
               for (const [filePath, content] of Object.entries(openaiFiles)) {
-                const newPath = filePath
-                  .replace(/\.feature$/, `-${safeRecordingName}.feature`)
-                  .replace(/Definitions\.java$/, `${safeRecordingName}Definitions.java`)
-                  .replace(/Page\.java$/, `${safeRecordingName}Page.java`)
-                  .replace(/Task\.java$/, `${safeRecordingName}Task.java`)
-                  .replace(/Question\.java$/, `${safeRecordingName}Question.java`)
-                  .replace(/\/${domainName}\//g, `/${safeRecordingName}/`)
-                  .replace(domainName, safeRecordingName);
+                // Extraer el nombre base del archivo sin extensión
+                const fileName = path.basename(filePath, path.extname(filePath));
 
-                // También actualizar referencias internas en el contenido
-                let updatedContent = content
-                  .replace(new RegExp(`class ${domainName}`, 'g'), `class ${safeRecordingName}`)
-                  .replace(new RegExp(`${domainName}\\.`, 'g'), `${safeRecordingName}.`);
+                // Determinar el nuevo nombre basado en el tipo de archivo
+                let newFileName = fileName;
+
+                // Solo renombrar si el archivo tiene un sufijo específico
+                if (fileName.endsWith('Definitions') ||
+                    fileName.endsWith('Page') ||
+                    fileName.endsWith('Task') ||
+                    fileName.endsWith('Question')) {
+
+                  // Extraer el nombre base sin el sufijo
+                  const baseName = fileName.replace(/Definitions$|Page$|Task$|Question$/, '');
+
+                  // Si el baseName ya contiene safeRecordingName, no duplicar
+                  if (baseName.includes(safeRecordingName)) {
+                    newFileName = fileName; // Mantener como está
+                  } else {
+                    // Crear nuevo nombre: safeRecordingName + Sufijo
+                    const suffix = fileName.match(/(Definitions|Page|Task|Question)$/)[0];
+                    newFileName = `${safeRecordingName}${suffix}`;
+                  }
+                }
+
+                // Construir nueva ruta
+                const dirPath = path.dirname(filePath);
+                const extension = path.extname(filePath);
+                const newPath = path.join(dirPath, newFileName + extension);
+
+                // Actualizar referencias internas de manera segura
+                let updatedContent = content;
+
+                // Solo reemplazar si el nombre original es diferente al nuevo
+                if (fileName !== newFileName) {
+                  // Reemplazar declaraciones de clase
+                  updatedContent = updatedContent.replace(
+                    new RegExp(`\\bclass ${fileName}\\b`, 'g'),
+                    `class ${newFileName}`
+                  );
+
+                  // Reemplazar referencias en imports y usos
+                  updatedContent = updatedContent.replace(
+                    new RegExp(`\\b${fileName}\\.`, 'g'),
+                    `${newFileName}.`
+                  );
+                }
 
                 renamedFiles[newPath] = updatedContent;
               }
@@ -637,29 +704,29 @@ app.post("/api/transform-recordings", async (req, res) => {
                 const urlObj = new URL(url);
                 const hostname = urlObj.hostname;
 
-                // Extraer nombre del dominio sin extensiones
-                const domainParts = hostname.split('.');
+                // Remover www, subdominios y extensiones comunes
+                let domain = hostname
+                  .replace(/^www\./, '')
+                  .replace(/\.(com|co|net|org|edu|gov|io|ai|dev)$/i, '')
+                  .replace(/\..+$/, ''); // Remover cualquier otra extensión
 
-                // Para casos como "www.mercadolibre.com.co"
-                if (domainParts.length >= 2) {
-                  // Tomar el penúltimo segmento (mercadolibre)
-                  let domain = domainParts[domainParts.length - 2];
+                // Capitalizar primera letra
+                domain = domain.charAt(0).toUpperCase() + domain.slice(1);
 
-                  // Capitalizar primera letra y eliminar caracteres inválidos
-                  domain = domain.charAt(0).toUpperCase() + domain.slice(1);
-                  domain = domain.replace(/[^a-zA-Z0-9]/g, '');
+                // Eliminar caracteres no alfabéticos
+                domain = domain.replace(/[^a-zA-Z]/g, '');
 
-                  // Si el dominio es muy corto (como 'co' o 'com'), tomar otro segmento
-                  if (domain.length <= 2 && domainParts.length >= 3) {
-                    domain = domainParts[domainParts.length - 3];
-                    domain = domain.charAt(0).toUpperCase() + domain.slice(1);
-                    domain = domain.replace(/[^a-zA-Z0-9]/g, '');
-                  }
-
-                  return domain || 'WebPage';
+                // Si el dominio queda vacío o muy corto, usar un nombre por defecto
+                if (!domain || domain.length < 2) {
+                  domain = 'WebPage';
                 }
 
-                return 'WebPage';
+                // Asegurar que no sea un nombre redundante
+                if (domain.endsWith('putadores') && domain !== 'Computadores') {
+                  domain = 'Computadores';
+                }
+
+                return domain;
               } catch (e) {
                 return 'WebPage';
               }
@@ -742,29 +809,29 @@ app.post("/api/transform-recordings", async (req, res) => {
                       # Generado automáticamente desde grabación de usuario
 
                       Scenario: Escenario exitoso - Navegación y búsqueda básica
-                        Given "que navego a la página principal de ${domainName}"
-                        When "busco un producto en la barra de búsqueda"
-                        Then "debo ver los resultados de búsqueda"
+                        Given que navego a la página principal de ${domainName}
+                        When busco un producto en la barra de búsqueda
+                        Then debo ver los resultados de búsqueda
 
                       Scenario: Escenario exitoso - Selección y visualización de producto
-                        Given "que estoy en la página de resultados de búsqueda"
-                        When "selecciono un producto específico de la lista"
-                        Then "debo ver los detalles del producto seleccionado"
+                        Given que estoy en la página de resultados de búsqueda
+                        When selecciono un producto específico de la lista
+                        Then debo ver los detalles del producto seleccionado
 
                       Scenario: Escenario de error - Intento de acción sin autenticación
-                        Given "que estoy viendo los detalles de un producto"
-                        When "intento agregar al carrito sin estar autenticado"
-                        Then "debo ver el mensaje que requiere inicio de sesión"
+                        Given que estoy viendo los detalles de un producto
+                        When intento agregar al carrito sin estar autenticado
+                        Then debo ver el mensaje que requiere inicio de sesión
 
                       Scenario: Escenario de error - Formulario con datos inválidos
-                        Given "que estoy en la página de registro"
-                        When "ingreso un formato de email inválido"
-                        Then "debo ver el mensaje de error de validación"
+                        Given que estoy en la página de registro
+                        When ingreso un formato de email inválido
+                        Then debo ver el mensaje de error de validación
 
                       Scenario: Escenario exitoso - Registro de nuevo usuario
-                        Given "que estoy en el formulario de registro"
-                        When "completo el registro con datos válidos"
-                        Then "debo ver la confirmación de registro exitoso"`;
+                        Given que estoy en el formulario de registro
+                        When completo el registro con datos válidos
+                        Then debo ver la confirmación de registro exitoso`;
 
                       return feature;
                     }
@@ -1057,7 +1124,7 @@ function generatePomXml(projectId) {
               let feature = `Feature: ${domainName} Automation
 
               Scenario: Escenario exitoso - Navegación principal
-                Given "User abre la aplicación ${domainName}"`;
+                Given User abre la aplicación ${domainName}`;
 
               // Agregar pasos dinámicos basados en la grabación en el formato correcto
               steps.forEach((step, index) => {
@@ -1067,18 +1134,18 @@ function generatePomXml(projectId) {
                 const stepNumber = index + 1;
 
                 if (stepType.includes('click')) {
-                  feature += `\n    When "hace clic en ${element} (paso ${stepNumber})"`;
+                  feature += `\n    When hace clic en ${element} (paso ${stepNumber})`;
                 } else if (stepType.includes('type') || stepType.includes('input')) {
-                  feature += `\n    When "ingresa '${value}' en ${element} (paso ${stepNumber})"`;
+                  feature += `\n    When ingresa '${value}' en ${element} (paso ${stepNumber})`;
                 } else if (stepType.includes('select')) {
-                  feature += `\n    When "selecciona '${value}' de ${element} (paso ${stepNumber})"`;
+                  feature += `\n    When selecciona '${value}' de ${element} (paso ${stepNumber})`;
                 } else if (stepType.includes('verify') || stepType.includes('check')) {
-                  feature += `\n    Then "debe ver '${value}' en ${element} (paso ${stepNumber})"`;
+                  feature += `\n    Then debe ver '${value}' en ${element} (paso ${stepNumber})`;
                 } else {
-                  feature += `\n    When "${stepType} ${element} (paso ${stepNumber})"`;
+                  feature += `\n    When ${stepType} ${element} (paso ${stepNumber})`;
                 }
               });
-    feature += `\n    Then "la automatización se completa exitosamente"`;
+    feature += `\n    Then la automatización se completa exitosamente`;
 
       return feature;
     }
@@ -1115,7 +1182,7 @@ function generatePomXml(projectId) {
       let feature = `Feature: ${domainName} Automation
 
       Scenario: Escenario grabado - ${flow || 'Flujo principal'}
-        Given "el usuario abre la aplicación ${domainName}"`;
+        Given el usuario abre la aplicación ${domainName}`;
 
       // Agregar pasos dinámicos en ESPAÑOL
       steps.forEach((step, index) => {
@@ -1125,21 +1192,21 @@ function generatePomXml(projectId) {
         const stepNumber = index + 1;
 
         if (stepType.includes('click')) {
-          feature += `\n    When "hace clic en ${element} (paso ${stepNumber})"`;
+          feature += `\n    When hace clic en ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('type') || stepType.includes('input') || stepType.includes('enter')) {
-          feature += `\n    When "ingresa '${value}' en ${element} (paso ${stepNumber})"`;
+          feature += `\n    When ingresa '${value}' en ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('select')) {
-          feature += `\n    When "selecciona '${value}' de ${element} (paso ${stepNumber})"`;
+          feature += `\n    When selecciona '${value}' de ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('verify') || stepType.includes('check') || stepType.includes('should')) {
-          feature += `\n    Then "debe ver '${value}' en ${element} (paso ${stepNumber})"`;
+          feature += `\n    Then debe ver '${value}' en ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('navigate') || stepType.includes('go')) {
-          feature += `\n    When "navega a ${element} (paso ${stepNumber})"`;
+          feature += `\n    When navega a ${element} (paso ${stepNumber})`;
         } else {
-          feature += `\n    When "${stepType} ${element} (paso ${stepNumber})"`;
+          feature += `\n    When ${stepType} ${element} (paso ${stepNumber})`;
         }
       });
 
-      feature += `\n    Then "la automatización se completa exitosamente"`;
+      feature += `\n    Then la automatización se completa exitosamente`;
 
       return feature;
     }
@@ -2100,6 +2167,40 @@ function deduplicateDefinitions(definitionsContent) {
       }
 
       return correctedLines.join('\n');
+    }
+
+    function validateAndCleanFileName(fileName, recordingName) {
+      // Remover duplicaciones como "CelularesCelulares"
+      let cleaned = fileName;
+
+      // Patrones de duplicación comunes
+      const duplicationPatterns = [
+        /^(Celulares|Computadores|Televisores)\1+/i,
+        /(Celulares|Computadores|Televisores){2,}/i
+      ];
+
+      for (const pattern of duplicationPatterns) {
+        if (pattern.test(cleaned)) {
+          // Extraer el nombre base sin duplicar
+          const match = cleaned.match(/(Celulares|Computadores|Televisores)/i);
+          if (match) {
+            const baseName = match[1];
+            // Reemplazar todo el nombre con el baseName + sufijo
+            const suffix = cleaned.replace(new RegExp(baseName, 'gi'), '').replace(/s$/i, '');
+            cleaned = baseName + suffix;
+          }
+        }
+      }
+
+      // Si el nombre contiene la grabación duplicada, corregir
+      if (recordingName && cleaned.includes(recordingName + recordingName)) {
+        cleaned = cleaned.replace(
+          recordingName + recordingName,
+          recordingName
+        );
+      }
+
+      return cleaned;
     }
 
     // 5. UNIR Y LIMPIAR ESPACIOS DUPLICADOS

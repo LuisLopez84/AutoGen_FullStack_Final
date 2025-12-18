@@ -21,9 +21,9 @@ IMPORTANTE ABSOLUTO: DEBES SEGUIR ESTE FORMATO EXACTO PARA EL FEATURE FILE:
 
 EJEMPLO CORRECTO OBLIGATORIO:
   Scenario: Escenario exitoso - Buscar producto
-    Given "el usuario navega a la página principal de Mercado Libre"
-    When "busca 'televisores' en la barra de búsqueda"
-    Then "debe ver una lista de resultados de búsqueda"
+    Given el usuario navega a la página principal de Mercado Libre
+    When busca 'televisores' en la barra de búsqueda
+    Then debe ver una lista de resultados de búsqueda
 
 EJEMPLO INCORRECTO (NO PERMITIDO):
   Scenario: Escenario exitoso - Buscar producto
