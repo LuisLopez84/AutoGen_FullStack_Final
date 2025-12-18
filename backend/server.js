@@ -844,21 +844,21 @@ app.post("/api/transform-recordings", async (req, res) => {
                       // Reemplazar el nombre del dominio en el Feature
                       cleaned = cleaned.replace(/Feature:.*/, `Feature: ${domainName} Automation`);
 
-                      // Asegurar formato inglés/español con comillas
                       // Normalizar saltos de línea
                       cleaned = cleaned.replace(/\r\n/g, '\n');
 
-                      // Convertir pasos sin comillas a formato con comillas
-                      const stepPattern = /^\s*(Given|When|Then|And|But)\s+(?!["'])(.+)$/gm;
+                      // CORREGIR: Eliminar comillas dobles de los steps
+                      // Patrón para encontrar steps con comillas dobles
+                      const stepWithQuotesPattern = /^\s*(Given|When|Then|And|But)\s+["']([^"']+)["']$/gm;
 
-                      cleaned = cleaned.replace(stepPattern, (match, keyword, text) => {
-                        // Si ya tiene comillas, dejarlo como está
-                        if (text.includes('"') || text.includes("'")) {
-                          return match;
-                        }
-                        // Si no tiene comillas, agregarlas
-                        return `    ${keyword} "${text.trim()}"`;
+                      cleaned = cleaned.replace(stepWithQuotesPattern, (match, keyword, text) => {
+                        // Retornar sin comillas
+                        return `    ${keyword} ${text.trim()}`;
                       });
+
+                      // También manejar casos donde hay comillas simples
+                      const singleQuotesPattern = /^\s*(Given|When|Then|And|But)\s+'([^']+)'$/gm;
+                      cleaned = cleaned.replace(singleQuotesPattern, '    $1 $2');
 
                       return cleaned;
                     }
@@ -1184,7 +1184,7 @@ function generatePomXml(projectId) {
       Scenario: Escenario grabado - ${flow || 'Flujo principal'}
         Given el usuario abre la aplicación ${domainName}`;
 
-      // Agregar pasos dinámicos en ESPAÑOL
+      // Agregar pasos dinámicos en ESPAÑOL SIN COMILLAS
       steps.forEach((step, index) => {
         const stepType = step.action?.toLowerCase() || 'realizar';
         const element = step.element?.tagName || step.element?.selector || 'elemento';
@@ -1194,11 +1194,11 @@ function generatePomXml(projectId) {
         if (stepType.includes('click')) {
           feature += `\n    When hace clic en ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('type') || stepType.includes('input') || stepType.includes('enter')) {
-          feature += `\n    When ingresa '${value}' en ${element} (paso ${stepNumber})`;
+          feature += `\n    When ingresa ${value} en ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('select')) {
-          feature += `\n    When selecciona '${value}' de ${element} (paso ${stepNumber})`;
+          feature += `\n    When selecciona ${value} de ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('verify') || stepType.includes('check') || stepType.includes('should')) {
-          feature += `\n    Then debe ver '${value}' en ${element} (paso ${stepNumber})`;
+          feature += `\n    Then debe ver ${value} en ${element} (paso ${stepNumber})`;
         } else if (stepType.includes('navigate') || stepType.includes('go')) {
           feature += `\n    When navega a ${element} (paso ${stepNumber})`;
         } else {
@@ -1990,20 +1990,27 @@ function deduplicateDefinitions(definitionsContent) {
     // Normalizar saltos de línea
     cleaned = cleaned.replace(/\r\n/g, '\n');
 
-    // 1. CORREGIR: Si no tiene comillas, agregarlas
-    const stepWithoutQuotes = /^\s*(Given|When|Then|And|But)\s+(?!["'])(.+)$/gm;
-    cleaned = cleaned.replace(stepWithoutQuotes, (match, keyword, text) => {
-      // Si ya tiene comillas dentro del texto, dejarlo
-      if (text.includes('"') || text.includes("'")) {
-        return `    ${keyword} "${text.trim()}"`;
-      }
-      // Si no tiene comillas, agregar comillas dobles
-      return `    ${keyword} "${text.trim()}"`;
-    });
+    // 1. ELIMINAR COMILLAS DE LOS STEPS
+      // Patrón para steps con comillas dobles
+      const doubleQuotesPattern = /^\s*(Given|When|Then|And|But)\s+["']([^"']+)["']$/gm;
+      cleaned = cleaned.replace(doubleQuotesPattern, (match, keyword, text) => {
+        return `    ${keyword} ${text.trim()}`;
+      });
 
-    // 2. CORREGIR: Si tiene comillas simples, cambiar a comillas dobles
-    const singleQuotes = /^\s*(Given|When|Then|And|But)\s+'([^']+)'$/gm;
-    cleaned = cleaned.replace(singleQuotes, '    $1 "$2"');
+      // Patrón para steps con comillas simples
+      const singleQuotesPattern = /^\s*(Given|When|Then|And|But)\s+'([^']+)'$/gm;
+      cleaned = cleaned.replace(singleQuotesPattern, (match, keyword, text) => {
+        return `    ${keyword} ${text.trim()}`;
+      });
+
+      // 2. CORREGIR: Si no tiene comillas pero tiene paréntesis o otros caracteres, dejarlo sin comillas
+      const stepWithoutQuotes = /^\s*(Given|When|Then|And|But)\s+(.+)$/gm;
+      cleaned = cleaned.replace(stepWithoutQuotes, (match, keyword, text) => {
+        // Limpiar texto si tiene comillas al inicio/final
+        let cleanText = text.trim();
+        cleanText = cleanText.replace(/^["']+|["']+$/g, '');
+        return `    ${keyword} ${cleanText}`;
+      });
 
     // 3. TRADUCIR PATRONES COMUNES DEL INGLÉS
     const translations = {
@@ -2115,19 +2122,16 @@ function deduplicateDefinitions(definitionsContent) {
       let correctedLines = [];
 
       for (let line of lines) {
-        // Solo procesar líneas que son steps de Gherkin
         if (line.trim().match(/^\s*(Given|When|Then|And|But)\s+/)) {
           let match = line.match(/^\s*(Given|When|Then|And|But)\s+(.+)$/);
           if (match) {
             let keyword = match[1];
             let description = match[2].trim();
 
-            // FORZAR FORMATO: keyword + "texto en español"
+            // ELIMINAR CUALQUIER COMILLA DEL TEXTO
+            description = description.replace(/^["']+|["']+$/g, '');
 
-            // 1. Remover comillas existentes
-            description = description.replace(/^["']|["']$/g, '');
-
-            // 2. Detectar y corregir inglés
+            // Detectar y corregir inglés
             const englishPatterns = [
               { pattern: /^I am (on|in)/i, replace: 'el usuario está en' },
               { pattern: /^I navigate to/i, replace: 'el usuario navega a' },
@@ -2138,25 +2142,19 @@ function deduplicateDefinitions(definitionsContent) {
               { pattern: /^I select/i, replace: 'selecciona' },
               { pattern: /^I should see/i, replace: 'debe ver' },
               { pattern: /^I should be/i, replace: 'debe ser' },
-              { pattern: /^the page should/i, replace: 'la página debe' },
-              { pattern: /^an? /i, replace: 'un ' },
-              { pattern: /^the /i, replace: 'el ' }
+              { pattern: /^the page should/i, replace: 'la página debe' }
             ];
 
-            // Aplicar correcciones
             for (let pattern of englishPatterns) {
               if (pattern.pattern.test(description)) {
                 description = description.replace(pattern.pattern, pattern.replace);
               }
             }
 
-            // 3. Asegurar que empiece en minúscula (español)
+            // Asegurar que empiece en minúscula
             description = description.charAt(0).toLowerCase() + description.slice(1);
 
-            // 4. Envolver en comillas dobles
-            description = `"${description}"`;
-
-            // 5. Reconstruir línea
+            // ¡IMPORTANTE! NO AGREGAR COMILLAS
             correctedLines.push(`    ${keyword} ${description}`);
           } else {
             correctedLines.push(line);
