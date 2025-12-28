@@ -81,12 +81,15 @@ app.post("/api/transform-recording", async (req, res) => {
            - Feature: [Nombre en español o inglés]
            - Scenario: [Nombre descriptivo en español]
            - Steps: Given/When/Then/And/But EN INGLÉS seguido de "texto descriptivo completo en español"
+           - Usar 'And' para continuar con pasos del mismo tipo (Given And..., When And..., Then And...)
 
         2. EJEMPLOS CORRECTOS (OBLIGATORIO):
            Scenario: Escenario exitoso - Login de usuario
-             Given el usuario navega a la página de inicio de sesión
-             When ingresa credenciales válidas en el formulario
-             Then debe ser redirigido al dashboard principal
+                Given el usuario navega a la página de inicio de sesión
+                And el usuario ingresa su nombre de usuario
+                And el usuario ingresa su contraseña
+                When el usuario hace clic en el botón de login
+                Then debe ser redirigido al dashboard principal
 
            Scenario: Escenario de error - Credenciales inválidas
              Given el usuario está en la página de login
@@ -98,10 +101,16 @@ app.post("/api/transform-recording", async (req, res) => {
            ❌ When I enter valid credentials
            ❌ Then I should be redirected to dashboard
 
-        4. ESTRUCTURA EXACTA DE CADA STEP:
+        4. PARA STEP DEFINITIONS:
+           - Usar @And para los steps que sean continuaciones
+           - Importar io.cucumber.java.en.And
+           - Ejemplo: @And("el usuario ingresa su nombre de usuario")
+             public void elUsuarioIngresaSuNombreDeUsuario() { ... }
+
+        5. ESTRUCTURA EXACTA DE CADA STEP:
            [Keyword en inglés] "[Descripción completa en español]"
 
-        5. VALIDACIÓN: Antes de entregar, verifica que:
+        6. VALIDACIÓN: Antes de entregar, verifica que:
            - Ningún step comience con "I am", "I click", "I enter", "I should"
            - Todos los steps NO tengan comillas dobles
            - El texto dentro de LOS STEPS esté completamente en español
@@ -144,6 +153,28 @@ app.post("/api/transform-recording", async (req, res) => {
              console.error("❌ Error parseando JSON de OpenAI:", e.message);
              console.log("Primeros 500 chars de la respuesta:", cleaned.substring(0, 500));
              openaiFiles = {};
+             }
+
+             // Después de procesar openaiFiles, verificar y corregir los definitions
+             for (const [filePath, content] of Object.entries(allFiles)) {
+               if (filePath.includes('Definitions.java') && filePath.includes('src/test/java/')) {
+                 // Extraer steps del feature correspondiente
+                 const featurePath = filePath.replace('definitions/', 'resources/features/')
+                                             .replace('Definitions.java', '.feature')
+                                             .replace('src/test/java/', 'src/test/');
+
+                 if (allFiles[featurePath]) {
+                   const featureSteps = parseFeatureSteps(allFiles[featurePath]);
+                   const correctedDefinitions = generateDefinitionsFromSteps(featureSteps, domainName);
+
+                   // Si encontramos steps 'And' en el feature, asegurarnos de que estén en definitions
+                   const hasAndSteps = featureSteps.some(step => step.keyword === 'And');
+                   if (hasAndSteps && !content.includes('@And')) {
+                     console.log(`🔄 Corrigiendo definitions para incluir @And: ${filePath}`);
+                     allFiles[filePath] = correctedDefinitions;
+                   }
+                 }
+               }
              }
 
              // ========== CONSTRUIR PROYECTO DINÁMICO ==========
@@ -1217,7 +1248,8 @@ function generatePomXml(projectId) {
       const steps = [];
 
       if (featureContent) {
-        const stepRegex = /^\s*(Given|When|Then|And|But)\s+"([^"]+)"$/gm;
+        // MODIFICACIÓN: Agregar 'And' y 'But' al patrón de búsqueda
+        const stepRegex = /^\s*(Given|When|Then|And|But)\s+(.+)$/gm;
         let match;
         while ((match = stepRegex.exec(featureContent)) !== null) {
           steps.push({
@@ -1232,6 +1264,7 @@ function generatePomXml(projectId) {
         steps.push(
           { keyword: 'Given', description: 'User abre la aplicación' },
           { keyword: 'When', description: 'realiza una acción' },
+          { keyword: 'And', description: 'continúa con otra acción' }, // Agregar ejemplo con And
           { keyword: 'Then', description: 'debe ver el resultado esperado' }
         );
       }
@@ -1239,15 +1272,31 @@ function generatePomXml(projectId) {
       // Generar métodos únicos basados en los steps
       const methods = steps.map((step, index) => {
         const methodName = generateMethodName(step.description, index);
+        // MODIFICACIÓN: Usar la anotación correcta para cada keyword
         const annotation = `@${step.keyword}("${step.description}")`;
 
+        // MODIFICACIÓN: Agregar manejo de parámetros
+        let hasParameter = false;
+        let parameterType = '';
+        let parameterName = '';
+
+        // Detectar si el step tiene parámetros
+        if (step.description.includes("'{string}'")) {
+          hasParameter = true;
+          parameterType = 'String';
+          parameterName = 'parametro';
+        } else if (step.description.includes("'{int}'")) {
+          hasParameter = true;
+          parameterType = 'Integer';
+          parameterName = 'parametro';
+        }
+
         return `
-        ${annotation}
-        public void ${methodName}() {
-            // Implementación para: ${step.description}
-            // TODO: Implementar la lógica específica
-            System.out.println("Ejecutando: ${step.description}");
-        }`;
+            ${annotation}
+            public void ${methodName}(${hasParameter ? `${parameterType} ${parameterName}` : ''}) {
+                // Implementación para: ${step.description}
+                ${hasParameter ? `System.out.println("Ejecutando: ${step.description.replace("'{string}'", "'" + parameterName + "'")}");` : 'System.out.println("Ejecutando: ' + step.description + '");'}
+            }`;
       }).join('\n\n');
 
       return `package co.com.template.automation.testing.definitions;
@@ -1255,7 +1304,8 @@ function generatePomXml(projectId) {
     import io.cucumber.java.en.Given;
     import io.cucumber.java.en.When;
     import io.cucumber.java.en.Then;
-    import io.cucumber.java.en.And;
+    import io.cucumber.java.en.And;  // MODIFICACIÓN: Importar And
+    import io.cucumber.java.en.But;   // MODIFICACIÓN: Importar But
 
     public class ${domainName}Definitions {
     ${methods}
@@ -1698,6 +1748,8 @@ import io.github.bonigarcia.wdm.WebDriverManager;
        import io.cucumber.java.en.Given;
        import io.cucumber.java.en.When;
        import io.cucumber.java.en.Then;
+       import io.cucumber.java.en.And;
+       import io.cucumber.java.en.But;
        import net.serenitybdd.screenplay.actors.OnStage;
        import net.serenitybdd.screenplay.actors.OnlineCast;
 
@@ -1717,6 +1769,11 @@ import io.github.bonigarcia.wdm.WebDriverManager;
        public void realizaUnaAccion() {
        // Implement based on recording
        }
+
+       @And("continúa con otra acción")  // Ejemplo con @And
+           public void continuaConOtraAccion() {
+               // Implementación para step And
+           }
 
        @Then("debe ver el resultado esperado")
        public void debeVerElResultadoEsperado() {
@@ -1990,18 +2047,23 @@ function deduplicateDefinitions(definitionsContent) {
     // Normalizar saltos de línea
     cleaned = cleaned.replace(/\r\n/g, '\n');
 
-    // 1. ELIMINAR COMILLAS DE LOS STEPS
-      // Patrón para steps con comillas dobles
-      const doubleQuotesPattern = /^\s*(Given|When|Then|And|But)\s+["']([^"']+)["']$/gm;
-      cleaned = cleaned.replace(doubleQuotesPattern, (match, keyword, text) => {
-        return `    ${keyword} ${text.trim()}`;
-      });
+    // MODIFICACIÓN: Agregar And y But al patrón
+    const gherkinKeywords = ['Given', 'When', 'Then', 'And', 'But'];
 
-      // Patrón para steps con comillas simples
-      const singleQuotesPattern = /^\s*(Given|When|Then|And|But)\s+'([^']+)'$/gm;
-      cleaned = cleaned.replace(singleQuotesPattern, (match, keyword, text) => {
-        return `    ${keyword} ${text.trim()}`;
-      });
+    // 1. ELIMINAR COMILLAS DE LOS STEPS
+      gherkinKeywords.forEach(keyword => {
+        // Patrón para steps con comillas dobles
+        const doubleQuotesPattern = new RegExp(`^\\s*(${keyword})\\s+["']([^"']+)["']$`, 'gm');
+        cleaned = cleaned.replace(doubleQuotesPattern, (match, kw, text) => {
+          return `    ${kw} ${text.trim()}`;
+        });
+
+       // Patrón para steps con comillas simples
+          const singleQuotesPattern = new RegExp(`^\\s*(${keyword})\\s+'([^']+)'$`, 'gm');
+          cleaned = cleaned.replace(singleQuotesPattern, (match, kw, text) => {
+            return `    ${kw} ${text.trim()}`;
+          });
+        });
 
       // 2. CORREGIR: Si no tiene comillas pero tiene paréntesis o otros caracteres, dejarlo sin comillas
       const stepWithoutQuotes = /^\s*(Given|When|Then|And|But)\s+(.+)$/gm;
@@ -2121,9 +2183,11 @@ function deduplicateDefinitions(definitionsContent) {
       let lines = featureContent.split('\n');
       let correctedLines = [];
 
+      // MODIFICACIÓN: Agregar And y But al patrón
+      const gherkinPattern = /^\s*(Given|When|Then|And|But)\s+(.+)$/;
+
       for (let line of lines) {
-        if (line.trim().match(/^\s*(Given|When|Then|And|But)\s+/)) {
-          let match = line.match(/^\s*(Given|When|Then|And|But)\s+(.+)$/);
+          const match = line.match(gherkinPattern);
           if (match) {
             let keyword = match[1];
             let description = match[2].trim();
@@ -2200,6 +2264,68 @@ function deduplicateDefinitions(definitionsContent) {
 
       return cleaned;
     }
+
+
+    function parseFeatureSteps(featureContent) {
+      const steps = [];
+      const lines = featureContent.split('\n');
+
+      for (const line of lines) {
+        // Buscar lines que comiencen con palabras clave Gherkin
+        const match = line.match(/^\s*(Given|When|Then|And|But)\s+(.+)$/);
+        if (match) {
+          const keyword = match[1];
+          let description = match[2].trim();
+
+          // Remover comillas si existen
+          description = description.replace(/^["']|["']$/g, '');
+
+          steps.push({
+            keyword,
+            description,
+            originalLine: line.trim()
+          });
+        }
+      }
+
+      return steps;
+    }
+
+    function generateDefinitionsFromSteps(steps, domainName) {
+      const methods = steps.map((step, index) => {
+        const methodName = generateMethodName(step.description, index);
+        const annotation = `@${step.keyword}("${step.description}")`;
+
+        // Detectar parámetros
+        let methodSignature = '()';
+        if (step.description.includes("'{string}'")) {
+          methodSignature = '(String parametro)';
+        } else if (step.description.includes("'{int}'")) {
+          methodSignature = '(Integer parametro)';
+        }
+
+        return `
+            ${annotation}
+            public void ${methodName}${methodSignature} {
+                // Implementación para: ${step.description}
+                System.out.println("Ejecutando step: ${step.keyword} - ${step.description}");
+            }`;
+      }).join('\n\n');
+
+      return `package co.com.template.automation.testing.definitions;
+
+    import io.cucumber.java.en.Given;
+    import io.cucumber.java.en.When;
+    import io.cucumber.java.en.Then;
+    import io.cucumber.java.en.And;
+    import io.cucumber.java.en.But;
+
+    public class ${domainName}Definitions {
+    ${methods}
+    }`;
+    }
+
+
 
     // 5. UNIR Y LIMPIAR ESPACIOS DUPLICADOS
     cleaned = correctedLines.join('\n');
