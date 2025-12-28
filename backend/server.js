@@ -2051,28 +2051,28 @@ function deduplicateDefinitions(definitionsContent) {
     const gherkinKeywords = ['Given', 'When', 'Then', 'And', 'But'];
 
     // 1. ELIMINAR COMILLAS DE LOS STEPS
-      gherkinKeywords.forEach(keyword => {
-        // Patrón para steps con comillas dobles
-        const doubleQuotesPattern = new RegExp(`^\\s*(${keyword})\\s+["']([^"']+)["']$`, 'gm');
-        cleaned = cleaned.replace(doubleQuotesPattern, (match, kw, text) => {
-          return `    ${kw} ${text.trim()}`;
-        });
-
-       // Patrón para steps con comillas simples
-          const singleQuotesPattern = new RegExp(`^\\s*(${keyword})\\s+'([^']+)'$`, 'gm');
-          cleaned = cleaned.replace(singleQuotesPattern, (match, kw, text) => {
-            return `    ${kw} ${text.trim()}`;
-          });
-        });
-
-      // 2. CORREGIR: Si no tiene comillas pero tiene paréntesis o otros caracteres, dejarlo sin comillas
-      const stepWithoutQuotes = /^\s*(Given|When|Then|And|But)\s+(.+)$/gm;
-      cleaned = cleaned.replace(stepWithoutQuotes, (match, keyword, text) => {
-        // Limpiar texto si tiene comillas al inicio/final
-        let cleanText = text.trim();
-        cleanText = cleanText.replace(/^["']+|["']+$/g, '');
-        return `    ${keyword} ${cleanText}`;
+    gherkinKeywords.forEach(keyword => {
+      // Patrón para steps con comillas dobles
+      const doubleQuotesPattern = new RegExp(`^\\s*(${keyword})\\s+["']([^"']+)["']$`, 'gm');
+      cleaned = cleaned.replace(doubleQuotesPattern, (match, kw, text) => {
+        return `    ${kw} ${text.trim()}`;
       });
+
+      // Patrón para steps con comillas simples
+      const singleQuotesPattern = new RegExp(`^\\s*(${keyword})\\s+'([^']+)'$`, 'gm');
+      cleaned = cleaned.replace(singleQuotesPattern, (match, kw, text) => {
+        return `    ${kw} ${text.trim()}`;
+      });
+    });
+
+    // 2. CORREGIR: Si no tiene comillas pero tiene paréntesis o otros caracteres, dejarlo sin comillas
+    const stepWithoutQuotes = /^\s*(Given|When|Then|And|But)\s+(.+)$/gm;
+    cleaned = cleaned.replace(stepWithoutQuotes, (match, keyword, text) => {
+      // Limpiar texto si tiene comillas al inicio/final
+      let cleanText = text.trim();
+      cleanText = cleanText.replace(/^["']+|["']+$/g, '');
+      return `    ${keyword} ${cleanText}`;
+    });
 
     // 3. TRADUCIR PATRONES COMUNES DEL INGLÉS
     const translations = {
@@ -2175,6 +2175,18 @@ function deduplicateDefinitions(definitionsContent) {
 
       return line;
     });
+
+    // 5. UNIR Y LIMPIAR ESPACIOS DUPLICADOS
+    cleaned = correctedLines.join('\n');
+
+    // Remover líneas vacías múltiples
+    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n');
+
+    // Asegurar que cada Scenario tenga un salto de línea antes
+    cleaned = cleaned.replace(/(\n)(Scenario:)/g, '\n\n$2');
+
+    return cleaned;
+  }
 
 
     function enforceStrictFormat(featureContent) {
