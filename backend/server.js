@@ -2199,42 +2199,39 @@ function deduplicateDefinitions(definitionsContent) {
       const gherkinPattern = /^\s*(Given|When|Then|And|But)\s+(.+)$/;
 
       for (let line of lines) {
-          const match = line.match(gherkinPattern);
-          if (match) {
-            let keyword = match[1];
-            let description = match[2].trim();
+        const match = line.match(gherkinPattern);
+        if (match) {
+          let keyword = match[1];
+          let description = match[2].trim();
 
-            // ELIMINAR CUALQUIER COMILLA DEL TEXTO
-            description = description.replace(/^["']+|["']+$/g, '');
+          // ELIMINAR CUALQUIER COMILLA DEL TEXTO
+          description = description.replace(/^["']+|["']+$/g, '');
 
-            // Detectar y corregir inglés
-            const englishPatterns = [
-              { pattern: /^I am (on|in)/i, replace: 'el usuario está en' },
-              { pattern: /^I navigate to/i, replace: 'el usuario navega a' },
-              { pattern: /^I click (on|the)/i, replace: 'hace clic en' },
-              { pattern: /^I enter/i, replace: 'ingresa' },
-              { pattern: /^I type/i, replace: 'escribe' },
-              { pattern: /^I search for/i, replace: 'busca' },
-              { pattern: /^I select/i, replace: 'selecciona' },
-              { pattern: /^I should see/i, replace: 'debe ver' },
-              { pattern: /^I should be/i, replace: 'debe ser' },
-              { pattern: /^the page should/i, replace: 'la página debe' }
-            ];
+          // Detectar y corregir inglés
+          const englishPatterns = [
+            { pattern: /^I am (on|in)/i, replace: 'el usuario está en' },
+            { pattern: /^I navigate to/i, replace: 'el usuario navega a' },
+            { pattern: /^I click (on|the)/i, replace: 'hace clic en' },
+            { pattern: /^I enter/i, replace: 'ingresa' },
+            { pattern: /^I type/i, replace: 'escribe' },
+            { pattern: /^I search for/i, replace: 'busca' },
+            { pattern: /^I select/i, replace: 'selecciona' },
+            { pattern: /^I should see/i, replace: 'debe ver' },
+            { pattern: /^I should be/i, replace: 'debe ser' },
+            { pattern: /^the page should/i, replace: 'la página debe' }
+          ];
 
-            for (let pattern of englishPatterns) {
-              if (pattern.pattern.test(description)) {
-                description = description.replace(pattern.pattern, pattern.replace);
-              }
+          for (let pattern of englishPatterns) {
+            if (pattern.pattern.test(description)) {
+              description = description.replace(pattern.pattern, pattern.replace);
             }
-
-            // Asegurar que empiece en minúscula
-            description = description.charAt(0).toLowerCase() + description.slice(1);
-
-            // ¡IMPORTANTE! NO AGREGAR COMILLAS
-            correctedLines.push(`    ${keyword} ${description}`);
-          } else {
-            correctedLines.push(line);
           }
+
+          // Asegurar que empiece en minúscula
+          description = description.charAt(0).toLowerCase() + description.slice(1);
+
+          // ¡IMPORTANTE! NO AGREGAR COMILLAS
+          correctedLines.push(`    ${keyword} ${description}`);
         } else {
           correctedLines.push(line);
         }
@@ -2336,23 +2333,6 @@ function deduplicateDefinitions(definitionsContent) {
     ${methods}
     }`;
     }
-
-
-
-    // 5. UNIR Y LIMPIAR ESPACIOS DUPLICADOS
-    cleaned = correctedLines.join('\n');
-
-    // Remover líneas vacías múltiples
-    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n');
-
-    // Asegurar que cada Scenario tenga un salto de línea antes
-    cleaned = cleaned.replace(/(\n)(Scenario:)/g, '\n\n$2');
-
-    return cleaned;
-  }
-
-
-
 
 
 
