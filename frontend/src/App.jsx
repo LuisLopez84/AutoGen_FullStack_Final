@@ -3,6 +3,7 @@ import RecorderGuide from "./components/RecorderGuide.jsx";
 import RecordingUploader from "./components/RecordingUploader.jsx";
 import TransformPanel from "./components/TransformPanel.jsx";
 import RecorderPanel from "./components/RecorderPanel.jsx";
+import PerformanceAnalyzer from "./components/PerformanceAnalyzer.jsx"; // <-- NUEVO IMPORT
 import "./App.css";
 
 const BACKEND = import.meta.env.VITE_BACKEND_BASE || "http://localhost:3000";
@@ -16,7 +17,7 @@ export default function App(){
     <div className="app">
       <header className="app-header">
         <h1>AutoGen - Generador de Automatización WEB Inteligente</h1>
-        <p>Convierte grabaciones web en proyectos Serenity BDD + Screenplay en minutos</p>
+        <p>Convierte grabaciones web en proyectos base con Serenity BDD + Screenplay en minutos</p>
       </header>
 
       <div className="app-container">
@@ -39,6 +40,13 @@ export default function App(){
           >
             📤 Subir Grabación
           </button>
+          {/* NUEVA PESTAÑA */}
+          <button
+            className={activeTab === "performance" ? "tab-active" : "tab"}
+            onClick={() => setActiveTab("performance")}
+          >
+            ⚡ Performance
+          </button>
         </nav>
 
         <div className="content">
@@ -46,6 +54,7 @@ export default function App(){
             {activeTab === "guide" && <RecorderGuide />}
             {activeTab === "recorder" && <RecorderPanel backend={BACKEND} />}
             {activeTab === "upload" && <RecordingUploader onLoad={r => setRecording(r)} />}
+            {activeTab === "performance" && <PerformanceAnalyzer />} {/* NUEVO COMPONENTE */}
           </div>
 
           <aside className="sidebar">
@@ -91,7 +100,7 @@ export default function App(){
                   ⬇️ Descargar ZIP del Proyecto
                 </a>
                 <p className="download-info">
-                  Proyecto Serenity BDD + Screenplay generado automáticamente
+                  Proyecto base Serenity BDD + Screenplay generado automáticamente
                 </p>
               </div>
             )}

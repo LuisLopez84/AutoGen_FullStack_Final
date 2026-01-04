@@ -2371,4 +2371,275 @@ function deduplicateDefinitions(definitionsContent) {
     } catch(e){ res.status(500).json({ error: e.message }); }
     });
 
+    // Endpoint para análisis de performance con PageSpeed Insights - VERSIÓN MEJORADA
+    app.post("/api/analyze-performance", async (req, res) => {
+      try {
+        const { url, strategy = "mobile" } = req.body;
+
+        if (!url) {
+          return res.status(400).json({ error: "URL es requerida" });
+        }
+
+        // Validar URL
+        let validatedUrl;
+        try {
+          validatedUrl = new URL(url);
+          // Asegurar que sea HTTP o HTTPS
+          if (!['http:', 'https:'].includes(validatedUrl.protocol)) {
+            return res.status(400).json({ error: "URL debe usar HTTP o HTTPS" });
+          }
+        } catch (e) {
+          return res.status(400).json({ error: "URL inválida. Formato: https://ejemplo.com" });
+        }
+
+        console.log(`📊 Analizando performance de: ${url} (${strategy})`);
+
+        // Configurar parámetros para PageSpeed Insights
+        const apiKey = process.env.PAGESPEED_API_KEY || "";
+
+        // Parámetros adicionales para mejor análisis
+        const params = new URLSearchParams({
+          url: validatedUrl.toString(),
+          strategy: strategy,
+          category: 'performance',
+          category: 'accessibility',
+          category: 'best-practices',
+          category: 'seo'
+        });
+
+        // Si hay API key, agregarla
+        if (apiKey) {
+          params.append('key', apiKey);
+          console.log("✅ Usando API Key para PageSpeed Insights");
+        } else {
+          console.log("⚠️ Sin API Key - Usando límite público");
+        }
+
+        // Construir URL de la API
+        const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params.toString()}`;
+
+        // Headers mejorados
+        const headers = {
+          'Accept': 'application/json',
+          'User-Agent': 'AutoGen-Performance-Analyzer/1.0 (+https://github.com)',
+          'Referer': 'http://localhost:5173'
+        };
+
+        // Hacer la solicitud a PageSpeed Insights con timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+
+        try {
+          const response = await fetch(apiUrl, {
+            headers: headers,
+            signal: controller.signal
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            const status = response.status;
+
+            // Manejar diferentes códigos de error
+            if (status === 429) {
+              return res.status(429).json({
+                error: "Límite de solicitudes alcanzado. Espera unos minutos o agrega una API key.",
+                code: "RATE_LIMITED",
+                withApiKey: !!apiKey
+              });
+            }
+
+            if (status === 400) {
+              return res.status(400).json({
+                error: "URL inválida o no accesible",
+                code: "INVALID_URL"
+              });
+            }
+
+            const errorText = await response.text();
+            console.error(`Error ${status} de PageSpeed API:`, errorText.substring(0, 200));
+
+            throw new Error(`PageSpeed API error: ${status}`);
+          }
+
+          const data = await response.json();
+
+          // Simplificar y estructurar los datos para el frontend
+          const simplifiedData = {
+            success: true,
+            analyzedUrl: validatedUrl.toString(),
+            strategy: strategy,
+            fetchTime: data.lighthouseResult.fetchTime,
+
+            // Puntuaciones principales
+            categories: Object.entries(data.lighthouseResult.categories).reduce((acc, [key, category]) => {
+              acc[key] = {
+                title: category.title,
+                score: Math.round(category.score * 100),
+                description: category.description
+              };
+              return acc;
+            }, {}),
+
+            // Métricas específicas
+            audits: {
+              'first-contentful-paint': data.lighthouseResult.audits['first-contentful-paint'],
+              'largest-contentful-paint': data.lighthouseResult.audits['largest-contentful-paint'],
+              'cumulative-layout-shift': data.lighthouseResult.audits['cumulative-layout-shift'],
+              'total-blocking-time': data.lighthouseResult.audits['total-blocking-time'],
+              'speed-index': data.lighthouseResult.audits['speed-index']
+            },
+
+            // Información técnica
+            userAgent: data.lighthouseResult.userAgent,
+            lighthouseVersion: data.lighthouseResult.lighthouseVersion,
+
+            // Datos raw para debug
+            _raw: apiKey ? undefined : data // Solo incluir datos raw si no hay API key
+          };
+
+          res.json(simplifiedData);
+
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+
+          if (fetchError.name === 'AbortError') {
+            throw new Error("Timeout: La solicitud tardó demasiado. Intenta con una URL más simple.");
+          }
+
+          throw fetchError;
+        }
+
+      } catch (err) {
+        console.error("❌ Error en análisis de performance:", err.message);
+
+        // Manejar diferentes tipos de errores
+        let statusCode = 500;
+        let errorMessage = err.message;
+        let errorCode = "UNKNOWN_ERROR";
+
+        if (err.message.includes("ENOTFOUND") || err.message.includes("ECONNREFUSED")) {
+          statusCode = 400;
+          errorMessage = "No se puede conectar con la URL. Verifica que sea accesible.";
+          errorCode = "CONNECTION_ERROR";
+        }
+
+        if (err.message.includes("Timeout")) {
+          statusCode = 408;
+          errorMessage = "La solicitud tardó demasiado. La URL puede ser muy compleja.";
+          errorCode = "TIMEOUT";
+        }
+
+        res.status(statusCode).json({
+          error: errorMessage,
+          code: errorCode,
+          suggestion: "Intenta con otra URL o verifica tu conexión a internet."
+        });
+      }
+    });
+
+    // Endpoint alternativo usando PageSpeed Insights público (sin API)
+    app.post("/api/analyze-performance-alt", async (req, res) => {
+      try {
+        const { url, strategy = "mobile" } = req.body;
+
+        if (!url) {
+          return res.status(400).json({ error: "URL es requerida" });
+        }
+
+        // Validar URL
+        try {
+          new URL(url);
+        } catch (e) {
+          return res.status(400).json({ error: "URL inválida" });
+        }
+
+        console.log(`📊 Usando método alternativo para: ${url}`);
+
+        // Método alternativo: Simular análisis local básico
+        // Esto es un fallback cuando la API está limitada
+
+        // Simular delay de análisis
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Datos de ejemplo estructurados
+        const mockData = {
+          success: true,
+          analyzedUrl: url,
+          strategy: strategy,
+          fetchTime: new Date().toISOString(),
+          isMockData: true, // Indicar que son datos de ejemplo
+
+          categories: {
+            performance: {
+              title: "Performance",
+              score: 75 + Math.floor(Math.random() * 20), // Score aleatorio 75-95
+              description: "Cómo de rápido carga tu página"
+            },
+            accessibility: {
+              title: "Accessibility",
+              score: 80 + Math.floor(Math.random() * 15),
+              description: "Cómo de accesible es tu sitio"
+            },
+            'best-practices': {
+              title: "Best Practices",
+              score: 85 + Math.floor(Math.random() * 10),
+              description: "Sigue las mejores prácticas web"
+            },
+            seo: {
+              title: "SEO",
+              score: 70 + Math.floor(Math.random() * 25),
+              description: "Optimización para motores de búsqueda"
+            }
+          },
+
+          audits: {
+            'first-contentful-paint': {
+              title: "First Contentful Paint",
+              description: "Tiempo hasta el primer contenido pintado",
+              displayValue: "1.8 s",
+              score: 0.9
+            },
+            'largest-contentful-paint': {
+              title: "Largest Contentful Paint",
+              description: "Tiempo hasta el contenido más grande pintado",
+              displayValue: "3.2 s",
+              score: 0.7
+            },
+            'cumulative-layout-shift': {
+              title: "Cumulative Layout Shift",
+              description: "Estabilidad visual",
+              displayValue: "0.1",
+              score: 0.9
+            },
+            'total-blocking-time': {
+              title: "Total Blocking Time",
+              description: "Tiempo total bloqueando",
+              displayValue: "200 ms",
+              score: 0.8
+            }
+          },
+
+          recommendations: [
+            "Optimizar imágenes para web",
+            "Minificar archivos CSS y JavaScript",
+            "Implementar lazy loading para imágenes",
+            "Usar CDN para recursos estáticos",
+            "Reducar código JavaScript no utilizado"
+          ],
+
+          note: "⚠️ Estos son datos de ejemplo porque la API de PageSpeed está limitada. Para datos reales, agrega una API Key."
+        };
+
+        res.json(mockData);
+
+      } catch (err) {
+        console.error("❌ Error en método alternativo:", err);
+        res.status(500).json({
+          error: "Error en análisis alternativo",
+          suggestion: "Intenta más tarde o configura una API Key"
+        });
+      }
+    });
+
     app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));
