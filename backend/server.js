@@ -3,6 +3,7 @@
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { generatePDF, generateCSV } from './exportUtils.js';
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
@@ -3318,6 +3319,99 @@ function deduplicateDefinitions(definitionsContent) {
           error: "Error en análisis alternativo",
           suggestion: "Intenta más tarde o configura una API Key"
         });
+      }
+    });
+
+
+
+    // ========== ENDPOINTS DE EXPORTACIÓN ==========
+
+    // Exportar a PDF
+    app.post("/api/export-pdf", async (req, res) => {
+      try {
+        const { analysisData } = req.body;
+
+        if (!analysisData) {
+          return res.status(400).json({ error: "Datos de análisis requeridos" });
+        }
+
+        console.log("📄 Generando PDF para análisis...");
+
+        const pdfBuffer = await generatePDF(analysisData, 'es');
+
+        // Configurar headers para descarga
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="analisis-performance-${Date.now()}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+
+        res.send(pdfBuffer);
+
+      } catch (err) {
+        console.error("❌ Error generando PDF:", err);
+        res.status(500).json({
+          error: "Error al generar PDF",
+          message: err.message
+        });
+      }
+    });
+
+    // Exportar a CSV
+    app.post("/api/export-csv", async (req, res) => {
+      try {
+        const { analysisData } = req.body;
+
+        if (!analysisData) {
+          return res.status(400).json({ error: "Datos de análisis requeridos" });
+        }
+
+        console.log("📊 Generando CSV para análisis...");
+
+        const csvContent = await generateCSV(analysisData);
+
+        // Configurar headers para descarga
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="analisis-performance-${Date.now()}.csv"`);
+        res.setHeader('Content-Length', Buffer.byteLength(csvContent, 'utf8'));
+
+        res.send(csvContent);
+
+      } catch (err) {
+        console.error("❌ Error generando CSV:", err);
+        res.status(500).json({
+          error: "Error al generar CSV",
+          message: err.message
+        });
+      }
+    });
+
+    // También crear un endpoint combinado si prefieres
+    app.post("/api/export-all", async (req, res) => {
+      try {
+        const { analysisData, format } = req.body;
+
+        if (!analysisData || !format) {
+          return res.status(400).json({ error: "Datos y formato requeridos" });
+        }
+
+        if (format === 'pdf') {
+          const pdfBuffer = await generatePDF(analysisData, 'es');
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="analisis-performance-${Date.now()}.pdf"`);
+          res.send(pdfBuffer);
+
+        } else if (format === 'csv') {
+          const csvContent = await generateCSV(analysisData);
+          res.setHeader('Content-Type', 'text/csv');
+          res.setHeader('Content-Disposition', `attachment; filename="analisis-performance-${Date.now()}.csv"`);
+          res.send(csvContent);
+
+        } else {
+          res.status(400).json({ error: "Formato no soportado. Use 'pdf' o 'csv'" });
+        }
+
+      } catch (err) {
+        console.error("❌ Error en exportación:", err);
+        res.status(500).json({ error: err.message });
       }
     });
 

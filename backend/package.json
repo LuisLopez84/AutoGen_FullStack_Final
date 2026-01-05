@@ -7,13 +7,15 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.10",
-    "openai": "^4.6.1",
-    "playwright": "^1.56.0",
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
     "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "csv-writer": "^1.6.0",
     "diff": "^5.1.0",
     "dotenv": "^16.0.0",
+    "express": "^4.18.2",
+    "openai": "^4.6.1",
+    "pdfkit": "^0.14.0",
+    "playwright": "^1.56.0",
     "uuid": "^9.0.0"
   }
 }
