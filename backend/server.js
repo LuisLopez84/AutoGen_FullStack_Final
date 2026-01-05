@@ -3415,6 +3415,50 @@ function deduplicateDefinitions(definitionsContent) {
       }
     });
 
+    // ========== ENDPOINT DE EXPORTACIÓN COMPLETA ==========
+    app.post("/api/export-complete-report", async (req, res) => {
+      try {
+        const { analysisData, format } = req.body;
+
+        if (!analysisData) {
+          return res.status(400).json({ error: "Datos de análisis requeridos" });
+        }
+
+        console.log(`📤 Exportando reporte completo en formato: ${format}`);
+
+        if (format === 'pdf') {
+          const pdfBuffer = await generatePDF(analysisData, 'es');
+
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition',
+            `attachment; filename="Reporte_Completo_${analysisData.url.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf"`);
+          res.setHeader('Content-Length', pdfBuffer.length);
+
+          res.send(pdfBuffer);
+
+        } else if (format === 'csv') {
+          const csvContent = await generateCSV(analysisData);
+
+          res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+          res.setHeader('Content-Disposition',
+            `attachment; filename="Datos_Completos_${analysisData.url.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.csv"`);
+          res.setHeader('Content-Length', Buffer.byteLength(csvContent, 'utf8'));
+
+          res.send(csvContent);
+
+        } else {
+          res.status(400).json({ error: "Formato no soportado. Use 'pdf' o 'csv'" });
+        }
+
+      } catch (err) {
+        console.error("❌ Error en exportación completa:", err);
+        res.status(500).json({
+          error: "Error al generar reporte",
+          message: err.message
+        });
+      }
+    });
+
     // Endpoint de diagnóstico para PageSpeed
     app.get("/api/debug-pagespeed", (req, res) => {
       const envInfo = {

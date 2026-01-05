@@ -459,25 +459,27 @@ export default function PerformanceAnalyzerSpanish() {
 
   // ========== FUNCIONES DE EXPORTACIÓN ==========
 
-  const exportarAPDF = async () => {
+  const exportarReporteCompleto = async (formato) => {
     if (!resultados) {
       setError("No hay resultados para exportar");
       return;
     }
 
     try {
-      const respuesta = await fetch("http://localhost:3000/api/export-pdf", {
+      const respuesta = await fetch("http://localhost:3000/api/export-complete-report", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          analysisData: resultados
+          analysisData: resultados,
+          format: formato
         }),
       });
 
       if (!respuesta.ok) {
-        throw new Error("Error al generar PDF");
+        const errorData = await respuesta.json();
+        throw new Error(errorData.error || "Error al generar reporte");
       }
 
       // Crear blob y descargar
@@ -485,15 +487,21 @@ export default function PerformanceAnalyzerSpanish() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `analisis-performance-${resultados.url.replace(/[^a-z0-9]/gi, '_')}-${Date.now()}.pdf`;
+
+      if (formato === 'pdf') {
+        a.download = `Reporte_Completo_${resultados.url.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf`;
+      } else {
+        a.download = `Datos_Completos_${resultados.url.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.csv`;
+      }
+
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
     } catch (err) {
-      console.error("Error exportando a PDF:", err);
-      setError(`Error al exportar PDF: ${err.message}`);
+      console.error(`Error exportando ${formato.toUpperCase()}:`, err);
+      setError(`Error al exportar ${formato.toUpperCase()}: ${err.message}`);
     }
   };
 
@@ -593,25 +601,26 @@ export default function PerformanceAnalyzerSpanish() {
           >
             📊 Abrir en PageSpeed
           </button>
-           {/* AGREGAR ESTOS BOTONES NUEVOS - SOLO MOSTRAR CUANDO HAY RESULTADOS */}
-            {resultados && (
-              <>
-                <button
-                  onClick={exportarAPDF}
-                  className="boton-exportar pdf"
-                  title="Exportar informe completo en PDF"
-                >
-                  📄 Exportar PDF
-                </button>
-                <button
-                  onClick={exportarACSV}
-                  className="boton-exportar csv"
-                  title="Exportar datos en formato CSV"
-                >
-                  📊 Exportar CSV
-                </button>
-              </>
-            )}
+
+          {/* NUEVOS BOTONES DE EXPORTACIÓN COMPLETA - SOLO MOSTRAR CUANDO HAY RESULTADOS */}
+          {resultados && (
+            <div className="botones-exportacion">
+              <button
+                onClick={() => exportarReporteCompleto('pdf')}
+                className="boton-exportar pdf"
+                title="Exportar informe completo con gráficos y diseño"
+              >
+                📄 Exportar PDF Completo
+              </button>
+              <button
+                onClick={() => exportarReporteCompleto('csv')}
+                className="boton-exportar csv"
+                title="Exportar todos los datos en formato tabla"
+              >
+                📊 Exportar CSV Completo
+              </button>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -1575,6 +1584,45 @@ export default function PerformanceAnalyzerSpanish() {
                                  .boton-exportar {
                                    width: 100%;
                                  }
+
+                             .botones-exportacion {
+                               display: flex;
+                               gap: 15px;
+                               margin-top: 20px;
+                               flex-wrap: wrap;
+                             }
+
+                             .boton-exportar {
+                               padding: 12px 20px;
+                               border: none;
+                               border-radius: 8px;
+                               font-weight: 600;
+                               cursor: pointer;
+                               transition: all 0.3s;
+                               display: flex;
+                               align-items: center;
+                               justify-content: center;
+                               gap: 8px;
+                             }
+
+                             .boton-exportar.pdf {
+                               background: linear-gradient(135deg, #e74c3c, #c0392b);
+                               color: white;
+                             }
+
+                             .boton-exportar.csv {
+                               background: linear-gradient(135deg, #27ae60, #229954);
+                               color: white;
+                             }
+
+                             .boton-exportar:hover {
+                               transform: translateY(-2px);
+                               box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                             }
+
+                             .boton-exportar:active {
+                               transform: translateY(0);
+                             }
                                }
                                  }
                                `}</style>

@@ -16,7 +16,7 @@ export default function App(){
   return (
     <div className="app">
       <header className="app-header">
-        <h1>AutoGen - Generador de Automatización WEB Inteligente</h1>
+        <h1>AutoGen - Generador de Automatización WEB Inteligente y Acelerador 3x QA</h1>
         <p>Convierte grabaciones web en proyectos base con Serenity BDD + Screenplay en minutos</p>
       </header>
 
