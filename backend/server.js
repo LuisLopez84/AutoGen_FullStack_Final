@@ -47,6 +47,395 @@ console.log("   - NODE_ENV:", process.env.NODE_ENV || "development");
 
 
 
+// ========== DICCIONARIOS DE TRADUCCIÓN ==========
+
+const AUDIT_TRANSLATIONS = {
+  // Categorías
+  'performance': 'Rendimiento',
+  'accessibility': 'Accesibilidad',
+  'best-practices': 'Mejores Prácticas',
+  'seo': 'SEO',
+  'pwa': 'PWA',
+
+  // Títulos de métricas
+  'First Contentful Paint': 'Primer Pintado de Contenido (FCP)',
+  'Largest Contentful Paint': 'Pintado de Contenido Más Grande (LCP)',
+  'First Meaningful Paint': 'Primer Pintado Significativo',
+  'Speed Index': 'Índice de Velocidad',
+  'Total Blocking Time': 'Tiempo Total de Bloqueo (TBT)',
+  'Cumulative Layout Shift': 'Cambio Acumulativo de Diseño (CLS)',
+  'Time to Interactive': 'Tiempo para Interactividad',
+  'Max Potential FID': 'FID Potencial Máximo',
+  'Server response time': 'Tiempo de Respuesta del Servidor (TTFB)',
+  'Estimated Input Latency': 'Latencia de Entrada Estimada',
+  'Interaction to Next Paint': 'Interacción al Siguiente Pintado (INP)',
+
+  // Descripciones de métricas
+  'First Contentful Paint marks the time at which the first text or image is painted.':
+    'Marca el tiempo en el que se pinta el primer texto o imagen.',
+  'Largest Contentful Paint marks the time at which the largest text or image is painted.':
+    'Marca el tiempo en el que se pinta el texto o imagen más grande.',
+  'Speed Index shows how quickly the contents of a page are visibly populated.':
+    'Muestra qué tan rápido se llena visiblemente el contenido de una página.',
+  'Total Blocking Time measures the total amount of time that a page is blocked from responding to user input.':
+    'Mide la cantidad total de tiempo que una página está bloqueada para responder a la entrada del usuario.',
+  'Cumulative Layout Shift measures the movement of visible elements within the viewport.':
+    'Mide el movimiento de elementos visibles dentro del viewport.',
+
+  // Títulos de auditorías comunes
+  'Avoid enormous network payloads': 'Evitar cargas útiles de red enormes',
+  'Avoid long main-thread tasks': 'Evitar tareas largas en el hilo principal',
+  'Avoid non-composited animations': 'Evitar animaciones no compuestas',
+  'Defer offscreen images': 'Diferir imágenes fuera de pantalla',
+  'Eliminate render-blocking resources': 'Eliminar recursos que bloquean el renderizado',
+  'Enable text compression': 'Habilitar compresión de texto',
+  'Ensure text remains visible during webfont load': 'Asegurar que el texto sea visible durante la carga de webfonts',
+  'Image elements have explicit width and height': 'Los elementos de imagen tienen ancho y alto explícitos',
+  'Keep request counts low and transfer sizes small': 'Mantener recuentos de solicitudes bajos y tamaños de transferencia pequeños',
+  'Lazy load offscreen images': 'Carga diferida de imágenes fuera de pantalla',
+  'Minimize main-thread work': 'Minimizar el trabajo del hilo principal',
+  'Preconnect to required origins': 'Preconectar a orígenes requeridos',
+  'Preload key requests': 'Precargar solicitudes clave',
+  'Properly size images': 'Dimensionar correctamente las imágenes',
+  'Reduce JavaScript execution time': 'Reducir el tiempo de ejecución de JavaScript',
+  'Reduce the impact of third-party code': 'Reducir el impacto del código de terceros',
+  'Remove unused CSS': 'Eliminar CSS no utilizado',
+  'Remove unused JavaScript': 'Eliminar JavaScript no utilizado',
+  'Serve images in next-gen formats': 'Servir imágenes en formatos de última generación',
+  'Serve static assets with an efficient cache policy': 'Servir activos estáticos con una política de caché eficiente',
+  'Use video formats for animated content': 'Usar formatos de video para contenido animado',
+    'Avoid chaining critical requests': 'Evitar encadenar solicitudes críticas',
+    'Avoid document.write()': 'Evitar document.write()',
+    'Avoid enormous network payloads': 'Evitar cargas útiles de red enormes',
+    'Avoid large layout shifts': 'Evitar grandes cambios de diseño',
+    'Avoid long main-thread tasks': 'Evitar tareas largas en el hilo principal',
+    'Avoid multiple page redirects': 'Evitar múltiples redirecciones de página',
+    'Avoid non-composited animations': 'Evitar animaciones no compuestas',
+    'Avoid serving legacy JavaScript to modern browsers': 'Evitar servir JavaScript legado a navegadores modernos',
+    'Avoids an excessive DOM size': 'Evitar un tamaño excesivo del DOM',
+    'Back/forward cache': 'Caché de retroceso/avance',
+    'Browser errors logged to the console': 'Errores del navegador registrados en la consola',
+    'CSS': 'CSS',
+    'Content is sized correctly for the viewport': 'El contenido tiene el tamaño correcto para el viewport',
+    'Critical Request Chains': 'Cadenas de solicitudes críticas',
+    'Defer offscreen images': 'Diferir imágenes fuera de pantalla',
+    'Displays images with correct aspect ratio': 'Muestra imágenes con la relación de aspecto correcta',
+    'Document uses plugins': 'El documento usa plugins',
+    'DOM Size': 'Tamaño del DOM',
+    'Does not use HTTP/2 for all of its resources': 'No usa HTTP/2 para todos sus recursos',
+    'Eliminate render-blocking resources': 'Eliminar recursos que bloquean el renderizado',
+    'Enable text compression': 'Habilitar compresión de texto',
+    'Ensure text remains visible during webfont load': 'Asegurar que el texto sea visible durante la carga de webfonts',
+    'Errors in console': 'Errores en la consola',
+    'First CPU Idle': 'Primera CPU inactiva',
+    'First Meaningful Paint': 'Primer pintado significativo',
+    'Font display': 'Visualización de fuentes',
+    'Has a <meta name="viewport"> tag with width or initial-scale': 'Tiene una etiqueta <meta name="viewport"> con width o initial-scale',
+    'HTTP/2': 'HTTP/2',
+    'Image elements have explicit width and height': 'Los elementos de imagen tienen ancho y alto explícitos',
+    'Indexable by search engines': 'Indexable por motores de búsqueda',
+    'Interactive': 'Interactivo',
+    'JavaScript': 'JavaScript',
+    'Keep request counts low and transfer sizes small': 'Mantener recuentos de solicitudes bajos y tamaños de transferencia pequeños',
+    'Labels': 'Etiquetas',
+    'Largest Contentful Paint element': 'Elemento de pintado de contenido más grande',
+    'Lazy load offscreen images': 'Carga diferida de imágenes fuera de pantalla',
+    'Link text': 'Texto del enlace',
+    'Links have descriptive text': 'Los enlaces tienen texto descriptivo',
+    'Main thread work': 'Trabajo del hilo principal',
+    'Maintainability': 'Mantenibilidad',
+    'Manifest has theme color': 'El manifiesto tiene color de tema',
+    'Manifest has valid icons': 'El manifiesto tiene iconos válidos',
+    'Manifest loaded': 'Manifiesto cargado',
+    'Metrics': 'Métricas',
+    'Minimize main-thread work': 'Minimizar el trabajo del hilo principal',
+    'Mobile-friendly': 'Optimizado para móviles',
+    'Network requests': 'Solicitudes de red',
+    'Network round trip times': 'Tiempos de ida y vuelta de la red',
+    'No browser errors logged to the console': 'No hay errores del navegador registrados en la consola',
+    'No document.write()': 'No hay document.write()',
+    'No friendly 404 page': 'No hay página 404 amigable',
+    'No misconfigured CORS headers': 'No hay encabezados CORS mal configurados',
+    'No redirects': 'Sin redirecciones',
+    'No unload listeners': 'Sin listeners de unload',
+    'No unsafe cross-origin links': 'Sin enlaces cross-origin inseguros',
+    'No vulnerable libraries': 'Sin librerías vulnerables',
+    'Non-composited animations': 'Animaciones no compuestas',
+    'Not readable with JavaScript disabled': 'No es legible con JavaScript deshabilitado',
+    'Offscreen images': 'Imágenes fuera de pantalla',
+    'Opportunities': 'Oportunidades',
+    'Page transitions': 'Transiciones de página',
+    'Passed audits': 'Auditorías aprobadas',
+    'Perceptual Speed Index': 'Índice de velocidad perceptual',
+    'Performance budget': 'Presupuesto de rendimiento',
+    'Preconnect to required origins': 'Preconectar a orígenes requeridos',
+    'Preload key requests': 'Precargar solicitudes clave',
+    'Properly size images': 'Dimensionar correctamente las imágenes',
+    'Redirects': 'Redirecciones',
+    'Reduce JavaScript execution time': 'Reducir el tiempo de ejecución de JavaScript',
+    'Reduce render-blocking stylesheets': 'Reducir hojas de estilo que bloquean el renderizado',
+    'Reduce the impact of third-party code': 'Reducir el impacto del código de terceros',
+    'Remove unused CSS': 'Eliminar CSS no utilizado',
+    'Remove unused JavaScript': 'Eliminar JavaScript no utilizado',
+    'Resource Summary': 'Resumen de recursos',
+    'Response compression': 'Compresión de respuesta',
+    'Serve images in next-gen formats': 'Servir imágenes en formatos de última generación',
+    'Serve static assets with an efficient cache policy': 'Servir activos estáticos con una política de caché eficiente',
+    'Server Backend Latencies': 'Latencia del backend del servidor',
+    'Server response time': 'Tiempo de respuesta del servidor',
+    'Speed Index': 'Índice de velocidad',
+    'Structured Data': 'Datos estructurados',
+    'Tables': 'Tablas',
+    'Tags': 'Etiquetas',
+    'Third-party code': 'Código de terceros',
+    'Third-party Summary': 'Resumen de terceros',
+    'Time to First Byte': 'Tiempo hasta el primer byte',
+    'Timing': 'Cronometraje',
+    'Total Blocking Time': 'Tiempo total de bloqueo',
+    'Total byte weight': 'Peso total en bytes',
+    'Uncached': 'No cacheados',
+    'Unminified CSS': 'CSS no minificado',
+    'Unminified JavaScript': 'JavaScript no minificado',
+    'Unused CSS rules': 'Reglas CSS no utilizadas',
+    'Unused JavaScript': 'JavaScript no utilizado',
+    'User Timing marks and measures': 'Marcas y medidas de tiempo del usuario',
+    'Use video formats for animated content': 'Usar formatos de video para contenido animado',
+    'Uses efficient cache policy on static assets': 'Usa política de caché eficiente en activos estáticos',
+    'Uses HTTP/2 for its own resources': 'Usa HTTP/2 para sus propios recursos',
+    'Uses responsive images': 'Usa imágenes responsivas',
+    'Uses video formats for animated content': 'Usa formatos de video para contenido animado',
+    'Valid source maps': 'Mapas de fuente válidos',
+    'Viewport': 'Viewport',
+    'Warnings': 'Advertencias',
+
+    // Descripciones comunes
+    'These checks highlight opportunities to improve the accessibility of your web app.':
+      'Estas comprobaciones destacan oportunidades para mejorar la accesibilidad de tu aplicación web.',
+    'These checks highlight opportunities to improve the performance of your web app.':
+      'Estas comprobaciones destacan oportunidades para mejorar el rendimiento de tu aplicación web.',
+    'These checks highlight opportunities to improve the SEO of your web app.':
+      'Estas comprobaciones destacan oportunidades para mejorar el SEO de tu aplicación web.',
+
+    // Textos de PageSpeed Insights
+    'Diagnostics': 'Diagnósticos',
+    'Opportunities': 'Oportunidades de mejora',
+    'Passed audits': 'Auditorías aprobadas',
+    'Metrics': 'Métricas esenciales',
+    'View trace': 'Ver traza',
+    'Learn more': 'Aprender más',
+    'View Treemap': 'Ver mapa de árbol',
+    'View Details': 'Ver detalles',
+    'Show All': 'Mostrar todo',
+    'Hide All': 'Ocultar todo',
+    'Expand All': 'Expandir todo',
+    'Collapse All': 'Contraer todo',
+
+    // Categorías de métricas
+    'good': 'bueno',
+    'needs improvement': 'necesita mejora',
+    'poor': 'pobre',
+    'fast': 'rápido',
+    'average': 'promedio',
+    'slow': 'lento',
+
+    // Textos de displayValue
+    'Potential savings': 'Ahorro potencial',
+    'Possible savings': 'Posible ahorro',
+    'Estimated savings': 'Ahorro estimado',
+    'Total savings': 'Ahorro total',
+    'ms': 'milisegundos',
+    'KB': 'kilobytes',
+    'MB': 'megabytes',
+    's': 'segundos',
+
+    // Recomendaciones comunes
+    'Consider reducing': 'Considera reducir',
+    'Consider removing': 'Considera eliminar',
+    'Consider optimizing': 'Considera optimizar',
+    'Consider implementing': 'Considera implementar',
+    'Consider using': 'Considera usar',
+    'Consider adding': 'Considera agregar',
+
+    // Errores comunes
+    'Failed to fetch': 'Error al obtener datos',
+    'Network error': 'Error de red',
+    'Timeout': 'Tiempo de espera agotado',
+    'Invalid URL': 'URL inválida',
+    'Rate limited': 'Límite de solicitudes alcanzado',
+
+
+  // Categorías de experiencia de carga
+  'FAST': 'RÁPIDO',
+  'AVERAGE': 'PROMEDIO',
+  'SLOW': 'LENTO',
+
+  // Unidades de medida
+  's': 'segundos',
+  'ms': 'milisegundos',
+  'unitless': 'sin unidad',
+  'bytes': 'bytes',
+  'KB': 'KB',
+  'MB': 'MB'
+};
+
+const CATEGORY_DESCRIPTIONS = {
+  'performance': 'Mide qué tan rápido carga tu página y responde a la interacción del usuario.',
+  'accessibility': 'Evalúa qué tan accesible es tu sitio para personas con discapacidades.',
+  'best-practices': 'Verifica si tu sitio sigue las mejores prácticas web modernas.',
+  'seo': 'Analiza la optimización para motores de búsqueda de tu sitio.',
+  'pwa': 'Evalúa las capacidades de Progressive Web App.'
+};
+
+const SCORE_LABELS = {
+  90: 'Excelente',
+  70: 'Bueno',
+  50: 'Necesita Mejora',
+  0: 'Pobre'
+};
+
+// ========== FUNCIONES DE TRADUCCIÓN ==========
+
+function translateText(text) {
+  if (!text || typeof text !== 'string') return text;
+
+  // Buscar traducción exacta
+  if (AUDIT_TRANSLATIONS[text]) {
+    return AUDIT_TRANSLATIONS[text];
+  }
+
+  // Buscar traducción parcial (para descripciones largas)
+  for (const [english, spanish] of Object.entries(AUDIT_TRANSLATIONS)) {
+    if (text.includes(english)) {
+      return text.replace(english, spanish);
+    }
+  }
+
+  return text;
+}
+
+function translateAudit(audit) {
+  if (!audit) return audit;
+
+  const translated = { ...audit };
+
+  // Traducir título
+  if (audit.title) {
+    translated.title = translateText(audit.title);
+  }
+
+  // Traducir descripción
+  if (audit.description) {
+    translated.description = translateText(audit.description);
+  }
+
+  // Traducir displayValue
+  if (audit.displayValue) {
+    let displayValue = audit.displayValue;
+
+    // Traducir unidades comunes
+    displayValue = displayValue.replace(/\b(\d+(\.\d+)?)\s*s\b/g, '$1 segundos');
+    displayValue = displayValue.replace(/\b(\d+(\.\d+)?)\s*ms\b/g, '$1 milisegundos');
+    displayValue = displayValue.replace(/\b(\d+(\.\d+)?)\s*KB\b/g, '$1 KB');
+    displayValue = displayValue.replace(/\b(\d+(\.\d+)?)\s*MB\b/g, '$1 MB');
+
+    // Traducir texto en displayValue
+    displayValue = translateText(displayValue);
+    translated.displayValue = displayValue;
+  }
+
+  // Traducir detalles si existen - CON VALIDACIÓN SEGURA
+  if (audit.details) {
+    const details = { ...audit.details };
+
+    // Validar que items sea un array antes de mapear
+    if (details.items && Array.isArray(details.items)) {
+      details.items = details.items.map(item => translateAuditItem(item));
+    } else if (details.items && typeof details.items === 'object') {
+      // Si items es un objeto pero no un array, convertirlo a array
+      details.items = [translateAuditItem(details.items)];
+    } else if (details.items) {
+      // Si items existe pero no es array ni objeto, crear array vacío
+      details.items = [];
+    }
+
+    translated.details = details;
+  }
+
+  return translated;
+}
+
+function translateAuditItem(item) {
+  if (!item || typeof item !== 'object') return item;
+
+  const translated = { ...item };
+
+  // Traducir propiedades comunes
+  Object.keys(translated).forEach(key => {
+    if (typeof translated[key] === 'string') {
+      translated[key] = translateText(translated[key]);
+    }
+  });
+
+  return translated;
+}
+
+function translateCategory(category) {
+  if (!category) return category;
+
+  const translated = { ...category };
+
+  // Traducir título
+  if (category.title) {
+    translated.title = translateText(category.title);
+  }
+
+  // Traducir descripción
+  if (category.description) {
+    translated.description = translateText(category.description);
+  }
+
+  // Agregar descripción detallada si no existe
+  if (!translated.detailedDescription && CATEGORY_DESCRIPTIONS[category.id]) {
+    translated.detailedDescription = CATEGORY_DESCRIPTIONS[category.id];
+  }
+
+  return translated;
+}
+
+function getScoreLabel(score) {
+  const numericScore = Math.round(score * 100);
+
+  if (numericScore >= 90) return SCORE_LABELS[90];
+  if (numericScore >= 70) return SCORE_LABELS[70];
+  if (numericScore >= 50) return SCORE_LABELS[50];
+  return SCORE_LABELS[0];
+}
+
+function translateLoadingExperience(loadingExp) {
+  if (!loadingExp) return loadingExp;
+
+  const translated = { ...loadingExp };
+
+  // Traducir categorías
+  if (loadingExp.overall_category) {
+    translated.overall_category = translateText(loadingExp.overall_category);
+  }
+
+  // Traducir métricas
+  if (loadingExp.metrics) {
+    Object.keys(loadingExp.metrics).forEach(key => {
+      if (loadingExp.metrics[key].category) {
+        loadingExp.metrics[key].category = translateText(loadingExp.metrics[key].category);
+      }
+    });
+  }
+
+  return translated;
+}
+
+
+
+
 app.use(cors({ origin: "*" }));
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -2515,99 +2904,141 @@ function deduplicateDefinitions(definitionsContent) {
       const lighthouse = rawData.lighthouseResult;
       const loadingExperience = rawData.loadingExperience;
 
+      // Procesar categorías traducidas
+      const categories = Object.entries(lighthouse.categories).reduce((acc, [key, category]) => {
+        const translatedCategory = translateCategory({
+          id: key,
+          title: category.title,
+          description: category.description,
+          score: category.score,
+          scoreRaw: category.score,
+          auditRefs: category.auditRefs || []
+        });
+
+        acc[key] = {
+          ...translatedCategory,
+          score: Math.round(category.score * 100),
+          label: getScoreLabel(category.score)
+        };
+        return acc;
+      }, {});
+
+      // Procesar métricas traducidas
+      const metrics = {
+        performance: {}
+      };
+
+      // Métricas principales
+      const mainMetrics = [
+        'largest-contentful-paint',
+        'cumulative-layout-shift',
+        'interaction-to-next-paint',
+        'total-blocking-time',
+        'first-contentful-paint',
+        'speed-index',
+        'first-meaningful-paint',
+        'server-response-time',
+        'max-potential-fid',
+        'estimated-input-latency'
+      ];
+
+      mainMetrics.forEach(key => {
+        const audit = lighthouse.audits[key];
+        if (audit) {
+          metrics.performance[key] = translateAudit({
+            title: audit.title,
+            description: audit.description,
+            displayValue: audit.displayValue,
+            score: audit.score,
+            numericValue: audit.numericValue,
+            numericUnit: audit.numericUnit
+          });
+        }
+      });
+
+        // Procesar auditorías traducidas CON VALIDACIÓN
+        const allAudits = Object.entries(lighthouse.audits);
+
+        const passed = allAudits
+          .filter(([_, audit]) => audit.score === 1 || audit.score === null)
+          .reduce((acc, [key, audit]) => {
+            const translatedAudit = translateAudit(audit);
+            // Asegurar que details.items sea un array si existe
+            if (translatedAudit.details && translatedAudit.details.items && !Array.isArray(translatedAudit.details.items)) {
+              translatedAudit.details.items = [translatedAudit.details.items];
+            }
+            acc[key] = translatedAudit;
+            return acc;
+          }, {});
+
+        const opportunities = allAudits
+          .filter(([_, audit]) => audit.score !== null && audit.score < 1)
+          .reduce((acc, [key, audit]) => {
+            const translatedAudit = translateAudit(audit);
+            // Asegurar que details.items sea un array si existe
+            if (translatedAudit.details && translatedAudit.details.items && !Array.isArray(translatedAudit.details.items)) {
+              translatedAudit.details.items = [translatedAudit.details.items];
+            }
+            acc[key] = translatedAudit;
+            return acc;
+          }, {});
+
+        const informational = allAudits
+          .filter(([_, audit]) => audit.score === null)
+          .reduce((acc, [key, audit]) => {
+            const translatedAudit = translateAudit(audit);
+            // Asegurar que details.items sea un array si existe
+            if (translatedAudit.details && translatedAudit.details.items && !Array.isArray(translatedAudit.details.items)) {
+              translatedAudit.details.items = [translatedAudit.details.items];
+            }
+            acc[key] = translatedAudit;
+            return acc;
+          }, {});
+
+      // Procesar diagnósticos
+      const diagnostics = Object.entries(lighthouse.audits)
+        .filter(([key, audit]) =>
+          audit.score !== null &&
+          audit.score < 1 &&
+          audit.details &&
+          audit.details.type === 'opportunity'
+        )
+        .map(([key, audit]) => ({
+          id: key,
+          ...translateAudit(audit),
+          severity: getSeverity(audit.score)
+        }));
+
+      // Generar recomendaciones en español
+      const recommendations = generateSpanishRecommendations(lighthouse.audits, diagnostics);
+
+      // Procesar experiencia de carga
+      const translatedLoadingExp = loadingExperience ?
+        translateLoadingExperience(loadingExperience) : null;
+
       return {
         success: true,
         url: url,
         strategy: strategy,
+        strategyLabel: strategy === 'mobile' ? 'Móvil' : 'Escritorio',
         fetchTime: lighthouse.fetchTime,
+        fecha: new Date(lighthouse.fetchTime).toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
 
-        // 1. PUNTUACIONES POR CATEGORÍA
-        categories: Object.entries(lighthouse.categories).reduce((acc, [key, category]) => {
-          acc[key] = {
-            id: key,
-            title: category.title,
-            description: category.description,
-            score: Math.round(category.score * 100),
-            scoreRaw: category.score,
-            manualDescription: category.manualDescription,
-            auditRefs: category.auditRefs || []
-          };
-          return acc;
-        }, {}),
+        // Datos traducidos
+        categories,
+        metrics,
+        audits: { passed, opportunities, informational },
+        diagnostics,
+        recommendations,
+        loadingExperience: translatedLoadingExp,
 
-        // 2. MÉTRICAS DE CORE WEB VITALS (COMPLETAS)
-        metrics: {
-          performance: {
-            // Core Web Vitals
-            'largest-contentful-paint': getAuditData(lighthouse.audits, 'largest-contentful-paint'),
-            'cumulative-layout-shift': getAuditData(lighthouse.audits, 'cumulative-layout-shift'),
-            'interaction-to-next-paint': getAuditData(lighthouse.audits, 'interaction-to-next-paint') ||
-                                        getAuditData(lighthouse.audits, 'total-blocking-time'),
-
-            // Otras métricas importantes
-            'first-contentful-paint': getAuditData(lighthouse.audits, 'first-contentful-paint'),
-            'speed-index': getAuditData(lighthouse.audits, 'speed-index'),
-            'total-blocking-time': getAuditData(lighthouse.audits, 'total-blocking-time'),
-            'max-potential-fid': getAuditData(lighthouse.audits, 'max-potential-fid'),
-            'time-to-first-byte': getAuditData(lighthouse.audits, 'server-response-time'),
-
-            // Métricas de carga
-            'first-meaningful-paint': getAuditData(lighthouse.audits, 'first-meaningful-paint'),
-            'estimated-input-latency': getAuditData(lighthouse.audits, 'estimated-input-latency')
-          }
-        },
-
-        // 3. AUDITORÍAS DETALLADAS (AGRUPADAS POR CATEGORÍA)
-        audits: {
-          passed: Object.entries(lighthouse.audits)
-            .filter(([_, audit]) => audit.score === 1 || audit.score === null)
-            .reduce((acc, [key, audit]) => {
-              acc[key] = formatAudit(audit);
-              return acc;
-            }, {}),
-
-          opportunities: Object.entries(lighthouse.audits)
-            .filter(([_, audit]) => audit.score !== null && audit.score < 1)
-            .reduce((acc, [key, audit]) => {
-              acc[key] = formatAudit(audit);
-              return acc;
-            }, {}),
-
-          informational: Object.entries(lighthouse.audits)
-            .filter(([_, audit]) => audit.score === null)
-            .reduce((acc, [key, audit]) => {
-              acc[key] = formatAudit(audit);
-              return acc;
-            }, {})
-        },
-
-        // 4. DIAGNÓSTICO DETALLADO
-        diagnostics: Object.entries(lighthouse.audits)
-          .filter(([key, audit]) =>
-            audit.score !== null &&
-            audit.score < 1 &&
-            audit.details &&
-            audit.details.type === 'opportunity'
-          )
-          .map(([key, audit]) => ({
-            id: key,
-            title: audit.title,
-            description: audit.description,
-            score: audit.score,
-            displayValue: audit.displayValue,
-            numericValue: audit.numericValue,
-            numericUnit: audit.numericUnit,
-            details: audit.details
-          })),
-
-        // 5. EXPERIENCIA DE CARGA REAL
-        loadingExperience: loadingExperience ? {
-          metrics: loadingExperience.metrics,
-          overall_category: loadingExperience.overall_category,
-          initial_url: loadingExperience.initial_url
-        } : null,
-
-        // 6. INFORMACIÓN TÉCNICA
+        // Información técnica
         environment: {
           userAgent: lighthouse.userAgent,
           lighthouseVersion: lighthouse.lighthouseVersion,
@@ -2616,16 +3047,105 @@ function deduplicateDefinitions(definitionsContent) {
           timing: lighthouse.timing
         },
 
-        // 7. CONSEJOS Y RECOMENDACIONES
-        recommendations: generateRecommendations(lighthouse.audits),
-
-        // 8. DATOS RAW PARA REFERENCIA
-        _raw: {
-          categories: lighthouse.categories,
-          audits: Object.keys(lighthouse.audits).length,
-          timing: lighthouse.timing
+        // Estadísticas resumen
+        summary: {
+          totalAudits: allAudits.length,
+          passedAudits: Object.keys(passed).length,
+          opportunities: Object.keys(opportunities).length,
+          diagnosticsCount: diagnostics.length,
+          performanceScore: Math.round(lighthouse.categories.performance?.score * 100) || 0
         }
       };
+    }
+
+    // ========== FUNCIONES AUXILIARES ACTUALIZADAS ==========
+
+    function getSeverity(score) {
+      if (score >= 0.9) return 'bajo';
+      if (score >= 0.5) return 'medio';
+      return 'alto';
+    }
+
+    function generateSpanishRecommendations(audits, diagnostics) {
+      const recommendations = [];
+
+      // Recomendaciones basadas en diagnósticos críticos
+      diagnostics
+        .filter(d => d.severity === 'alto')
+        .slice(0, 5)
+        .forEach(diag => {
+          recommendations.push({
+            priority: 'ALTA',
+            title: `Corregir: ${diag.title}`,
+            description: diag.description,
+            impact: 'Impacto alto en el rendimiento',
+            action: `Solucionar este problema puede mejorar significativamente ${diag.displayValue || 'el rendimiento'}`,
+            auditId: diag.id
+          });
+        });
+
+      // Recomendaciones generales en español
+      const generalRecommendations = [
+        {
+          priority: 'MEDIA',
+          title: 'Optimizar imágenes',
+          description: 'Las imágenes son el recurso más pesado en la mayoría de sitios web',
+          impact: 'Reduce el tamaño de la página y mejora el LCP',
+          action: 'Usa formatos WebP, comprime imágenes y establece dimensiones explícitas'
+        },
+        {
+          priority: 'MEDIA',
+          title: 'Minificar recursos CSS y JavaScript',
+          description: 'Archivos no minificados ocupan más espacio del necesario',
+          impact: 'Reduce el tamaño de descarga y tiempo de parsing',
+          action: 'Usa herramientas como Terser para JS y CSSNano para CSS'
+        },
+        {
+          priority: 'ALTA',
+          title: 'Eliminar JavaScript no utilizado',
+          description: 'Código que no se ejecuta pero se descarga igualmente',
+          impact: 'Reducción significativa del bundle size',
+          action: 'Usa Tree Shaking y análisis de bundles'
+        },
+        {
+          priority: 'MEDIA',
+          title: 'Implementar lazy loading de imágenes',
+          description: 'Cargar imágenes solo cuando son visibles en el viewport',
+          impact: 'Mejora el FCP y reduce datos móviles',
+          action: 'Usa el atributo loading="lazy" en imágenes'
+        },
+        {
+          priority: 'BAJA',
+          title: 'Optimizar fuentes web',
+          description: 'Las fuentes custom pueden bloquear el renderizado',
+          impact: 'Mejora el FCP y evita flashes de texto invisible',
+          action: 'Usa font-display: swap y preload para fuentes críticas'
+        },
+        {
+          priority: 'ALTA',
+          title: 'Reducir trabajo del hilo principal',
+          description: 'JavaScript pesado bloquea la interactividad',
+          impact: 'Mejora el TBT y Time to Interactive',
+          action: 'Divide tareas largas, usa Web Workers para procesamiento pesado'
+        },
+        {
+          priority: 'MEDIA',
+          title: 'Configurar caché apropiado',
+          description: 'Recursos estáticos sin caché se descargan repetidamente',
+          impact: 'Reduce solicitudes de red en visitas repetidas',
+          action: 'Configura encabezados Cache-Control para recursos estáticos'
+        },
+        {
+          priority: 'BAJA',
+          title: 'Usar CDN para recursos estáticos',
+          description: 'Los recursos se sirven desde ubicaciones cercanas al usuario',
+          impact: 'Mejora TTFB y velocidad de descarga',
+          action: 'Implementa Cloudflare, Cloud CDN o servicios similares'
+        }
+      ];
+
+      // Combinar recomendaciones
+      return [...recommendations, ...generalRecommendations].slice(0, 10);
     }
 
     // ========== FUNCIONES AUXILIARES ==========

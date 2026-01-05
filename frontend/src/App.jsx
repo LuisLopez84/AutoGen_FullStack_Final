@@ -3,7 +3,7 @@ import RecorderGuide from "./components/RecorderGuide.jsx";
 import RecordingUploader from "./components/RecordingUploader.jsx";
 import TransformPanel from "./components/TransformPanel.jsx";
 import RecorderPanel from "./components/RecorderPanel.jsx";
-import PerformanceAnalyzer from "./components/PerformanceAnalyzer.jsx"; // <-- NUEVO IMPORT
+import PerformanceAnalyzerSpanish from "./components/PerformanceAnalyzerSpanish.jsx"; // <-- NUEVO IMPORT
 import "./App.css";
 
 const BACKEND = import.meta.env.VITE_BACKEND_BASE || "http://localhost:3000";
@@ -54,7 +54,7 @@ export default function App(){
             {activeTab === "guide" && <RecorderGuide />}
             {activeTab === "recorder" && <RecorderPanel backend={BACKEND} />}
             {activeTab === "upload" && <RecordingUploader onLoad={r => setRecording(r)} />}
-            {activeTab === "performance" && <PerformanceAnalyzer />} {/* NUEVO COMPONENTE */}
+            {activeTab === "performance" && <PerformanceAnalyzerSpanish />} {/* NUEVO COMPONENTE */}
           </div>
 
           <aside className="sidebar">
