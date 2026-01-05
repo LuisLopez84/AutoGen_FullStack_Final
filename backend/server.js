@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
@@ -9,14 +13,39 @@ import AdmZip from "adm-zip";
 import OpenAI from "openai";
 import { chromium } from "playwright";
 import { buildDynamicPrompt, buildTransformPrompt } from "./prompts/generateProjectPrompts.js";
+import dotenv from 'dotenv';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Cargar .env inmediatamente
+const envPath = path.join(__dirname, '.env');
+console.log("🌍 Cargando variables de entorno...");
+console.log("   - Ruta del .env:", envPath);
+console.log("   - Existe .env:", fs.existsSync(envPath));
+
+// Forzar recarga desde la ruta correcta
+dotenv.config({ path: envPath });
+
+// Ahora inicializar OpenAI DESPUÉS de cargar dotenv
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Verificar que dotenv esté cargando correctamente
+console.log("🌍 Cargando variables de entorno...");
+console.log("   - Ruta del .env:", path.join(__dirname, '.env'));
+console.log("   - Existe .env:", fs.existsSync(path.join(__dirname, '.env')));
+
+// Forzar recarga de .env
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+// Verificar variables cargadas
+console.log("🔍 Variables de entorno cargadas:");
+console.log("   - OPENAI_API_KEY:", process.env.OPENAI_API_KEY ? "✅ Presente" : "❌ Ausente");
+console.log("   - PAGESPEED_API_KEY:", process.env.PAGESPEED_API_KEY ? "✅ Presente" : "❌ Ausente");
+console.log("   - NODE_ENV:", process.env.NODE_ENV || "development");
+
+
 
 app.use(cors({ origin: "*" }));
 app.use(bodyParser.json({ limit: "50mb" }));
@@ -2394,8 +2423,26 @@ function deduplicateDefinitions(definitionsContent) {
 
         console.log(`📊 Analizando performance de: ${url} (${strategy})`);
 
-        // Configurar parámetros para PageSpeed Insights
-        const apiKey = process.env.PAGESPEED_API_KEY || "";
+        // Luego en la función analyze-performance
+        // Obtener API Key de múltiples fuentes posibles
+        let apiKey = process.env.PAGESPEED_API_KEY ||
+                     process.env.GOOGLE_API_KEY ||
+                     process.env.API_KEY ||
+                     "";
+
+        // Log para debug
+        console.log("🔑 Buscando API Key de PageSpeed...");
+        console.log("   - PAGESPEED_API_KEY presente:", !!process.env.PAGESPEED_API_KEY);
+        console.log("   - GOOGLE_API_KEY presente:", !!process.env.GOOGLE_API_KEY);
+        console.log("   - API_KEY presente:", !!process.env.API_KEY);
+        console.log("   - Key encontrada:", apiKey ? `SI (${apiKey.substring(0, 10)}...)` : "NO");
+
+        console.log("🔑 API Key Status:", {
+          hasPagespeedKey: !!process.env.PAGESPEED_API_KEY,
+          hasGoogleKey: !!process.env.GOOGLE_API_KEY,
+          keyLength: apiKey.length,
+          keyPrefix: apiKey.substring(0, 10) + "..."
+        });
 
         // Parámetros adicionales para mejor análisis
         const params = new URLSearchParams({
@@ -2424,6 +2471,36 @@ function deduplicateDefinitions(definitionsContent) {
           'User-Agent': 'AutoGen-Performance-Analyzer/1.0 (+https://github.com)',
           'Referer': 'http://localhost:5173'
         };
+
+        // Después de validar la URL, antes de hacer la petición
+        if (!apiKey || apiKey.trim() === '') {
+          // Intentar obtener la clave del environment de Docker
+          apiKey = process.env.PAGESPEED_API_KEY || "";
+
+          if (!apiKey || apiKey.trim() === '') {
+            return res.status(400).json({
+              error: "API Key de PageSpeed no configurada",
+              code: "MISSING_API_KEY",
+              instructions: [
+                "1. Ve a Google Cloud Console",
+                "2. Crea una API Key",
+                "3. Habilita PageSpeed Insights API",
+                "4. Agrega PAGESPEED_API_KEY=tu_clave en .env",
+                "5. Reinicia la aplicación con: docker-compose down && docker-compose up --build"
+              ],
+              debug: {
+                hasEnvFile: fs.existsSync(path.join(__dirname, '.env')),
+                keysInEnv: Object.keys(process.env).filter(k => k.includes('PAGESPEED') || k.includes('GOOGLE')),
+                dockerComposeEnv: process.env.PAGESPEED_API_KEY ? "Presente" : "Ausente"
+              }
+            });
+          }
+        }
+
+        // Validar formato de la API Key
+        if (!apiKey.startsWith('AIza')) {
+          console.warn("⚠️ API Key con formato sospechoso:", apiKey.substring(0, 20));
+        }
 
         // Hacer la solicitud a PageSpeed Insights con timeout
         const controller = new AbortController();
@@ -2640,6 +2717,48 @@ function deduplicateDefinitions(definitionsContent) {
           suggestion: "Intenta más tarde o configura una API Key"
         });
       }
+    });
+
+    // Endpoint de diagnóstico para PageSpeed
+    app.get("/api/debug-pagespeed", (req, res) => {
+      const envInfo = {
+        // Variables de entorno
+        PAGESPEED_API_KEY: process.env.PAGESPEED_API_KEY
+          ? `Presente (${process.env.PAGESPEED_API_KEY.substring(0, 15)}...)`
+          : "Ausente",
+        GOOGLE_API_KEY: process.env.GOOGLE_API_KEY
+          ? `Presente (${process.env.GOOGLE_API_KEY.substring(0, 15)}...)`
+          : "Ausente",
+        API_KEY: process.env.API_KEY
+          ? `Presente (${process.env.API_KEY.substring(0, 15)}...)`
+          : "Ausente",
+
+        // Archivos
+        hasEnvFile: fs.existsSync(path.join(__dirname, '.env')),
+        envFileContent: fs.existsSync(path.join(__dirname, '.env'))
+          ? fs.readFileSync(path.join(__dirname, '.env'), 'utf8').split('\n').filter(l => l.includes('KEY'))
+          : [],
+
+        // Docker
+        dockerComposeExists: fs.existsSync(path.join(__dirname, '../docker-compose.yml')),
+
+        // Sistema
+        nodeEnv: process.env.NODE_ENV,
+        cwd: process.cwd(),
+        __dirname: __dirname
+      };
+
+      res.json({
+        success: true,
+        timestamp: new Date().toISOString(),
+        environment: envInfo,
+        instructions: [
+          "1. Verifica que el archivo .env esté en la raíz del proyecto backend",
+          "2. Asegúrate de que la variable sea PAGESPEED_API_KEY (no PAGE_SPEED_API_KEY)",
+          "3. Reinicia con: docker-compose down && docker-compose up --build",
+          "4. Si usas Docker, verifica el archivo docker-compose.yml"
+        ]
+      });
     });
 
     app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));

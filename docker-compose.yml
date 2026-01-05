@@ -7,9 +7,22 @@ services:
       - "3000:3000"
     volumes:
       - ./backend:/app
+      - ./frontend:/app/frontend
+      - ./.env:/app/.env:ro  # ← Agregar :ro para read-only
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-
+      - PAGESPEED_API_KEY=${PAGESPEED_API_KEY}
+      - NODE_ENV=production
+    env_file:
+      - .env  # ← Cargar todas las variables del .env
+    # Agregar comando para debug
+    command: [ "node", "server.js" ]
+    # Health check
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/debug-pagespeed" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
   frontend:
     build: ./frontend
     container_name: autogen-frontend
@@ -17,4 +30,4 @@ services:
       - "5173:5173"
     volumes:
       - ./frontend:/app
-    command: ["npm","run","dev","--","--host"]
+    command: [ "npm","run","dev","--","--host" ]
