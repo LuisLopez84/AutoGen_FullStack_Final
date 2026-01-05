@@ -2401,6 +2401,7 @@ function deduplicateDefinitions(definitionsContent) {
     });
 
     // Endpoint para análisis de performance con PageSpeed Insights - VERSIÓN MEJORADA
+    // EN server.js - REEMPLAZAR EL ENDPOINT analyze-performance COMPLETO
     app.post("/api/analyze-performance", async (req, res) => {
       try {
         const { url, strategy = "mobile" } = req.body;
@@ -2413,7 +2414,6 @@ function deduplicateDefinitions(definitionsContent) {
         let validatedUrl;
         try {
           validatedUrl = new URL(url);
-          // Asegurar que sea HTTP o HTTPS
           if (!['http:', 'https:'].includes(validatedUrl.protocol)) {
             return res.status(400).json({ error: "URL debe usar HTTP o HTTPS" });
           }
@@ -2421,90 +2421,44 @@ function deduplicateDefinitions(definitionsContent) {
           return res.status(400).json({ error: "URL inválida. Formato: https://ejemplo.com" });
         }
 
-        console.log(`📊 Analizando performance de: ${url} (${strategy})`);
+        console.log(`📊 Analizando performance completo de: ${url} (${strategy})`);
 
-        // Luego en la función analyze-performance
-        // Obtener API Key de múltiples fuentes posibles
-        let apiKey = process.env.PAGESPEED_API_KEY ||
-                     process.env.GOOGLE_API_KEY ||
-                     process.env.API_KEY ||
-                     "";
+        // Obtener API Key
+        let apiKey = process.env.PAGESPEED_API_KEY || "";
 
-        // Log para debug
-        console.log("🔑 Buscando API Key de PageSpeed...");
-        console.log("   - PAGESPEED_API_KEY presente:", !!process.env.PAGESPEED_API_KEY);
-        console.log("   - GOOGLE_API_KEY presente:", !!process.env.GOOGLE_API_KEY);
-        console.log("   - API_KEY presente:", !!process.env.API_KEY);
-        console.log("   - Key encontrada:", apiKey ? `SI (${apiKey.substring(0, 10)}...)` : "NO");
+        if (!apiKey || apiKey.trim() === '') {
+          return res.status(400).json({
+            error: "API Key de PageSpeed no configurada",
+            code: "MISSING_API_KEY",
+            instructions: "Configura PAGESPEED_API_KEY en el archivo .env"
+          });
+        }
 
-        console.log("🔑 API Key Status:", {
-          hasPagespeedKey: !!process.env.PAGESPEED_API_KEY,
-          hasGoogleKey: !!process.env.GOOGLE_API_KEY,
-          keyLength: apiKey.length,
-          keyPrefix: apiKey.substring(0, 10) + "..."
-        });
-
-        // Parámetros adicionales para mejor análisis
+        // Parámetros para obtener TODOS los datos
         const params = new URLSearchParams({
           url: validatedUrl.toString(),
           strategy: strategy,
           category: 'performance',
           category: 'accessibility',
           category: 'best-practices',
-          category: 'seo'
+          category: 'seo',
+          category: 'pwa'
         });
 
-        // Si hay API key, agregarla
-        if (apiKey) {
-          params.append('key', apiKey);
-          console.log("✅ Usando API Key para PageSpeed Insights");
-        } else {
-          console.log("⚠️ Sin API Key - Usando límite público");
-        }
+        params.append('key', apiKey);
 
-        // Construir URL de la API
+        // URL de la API
         const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params.toString()}`;
 
-        // Headers mejorados
+        // Headers
         const headers = {
           'Accept': 'application/json',
-          'User-Agent': 'AutoGen-Performance-Analyzer/1.0 (+https://github.com)',
-          'Referer': 'http://localhost:5173'
+          'User-Agent': 'AutoGen-Performance-Analyzer/1.0'
         };
 
-        // Después de validar la URL, antes de hacer la petición
-        if (!apiKey || apiKey.trim() === '') {
-          // Intentar obtener la clave del environment de Docker
-          apiKey = process.env.PAGESPEED_API_KEY || "";
-
-          if (!apiKey || apiKey.trim() === '') {
-            return res.status(400).json({
-              error: "API Key de PageSpeed no configurada",
-              code: "MISSING_API_KEY",
-              instructions: [
-                "1. Ve a Google Cloud Console",
-                "2. Crea una API Key",
-                "3. Habilita PageSpeed Insights API",
-                "4. Agrega PAGESPEED_API_KEY=tu_clave en .env",
-                "5. Reinicia la aplicación con: docker-compose down && docker-compose up --build"
-              ],
-              debug: {
-                hasEnvFile: fs.existsSync(path.join(__dirname, '.env')),
-                keysInEnv: Object.keys(process.env).filter(k => k.includes('PAGESPEED') || k.includes('GOOGLE')),
-                dockerComposeEnv: process.env.PAGESPEED_API_KEY ? "Presente" : "Ausente"
-              }
-            });
-          }
-        }
-
-        // Validar formato de la API Key
-        if (!apiKey.startsWith('AIza')) {
-          console.warn("⚠️ API Key con formato sospechoso:", apiKey.substring(0, 20));
-        }
-
-        // Hacer la solicitud a PageSpeed Insights con timeout
+        // Hacer la solicitud con timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
 
         try {
           const response = await fetch(apiUrl, {
@@ -2516,104 +2470,232 @@ function deduplicateDefinitions(definitionsContent) {
 
           if (!response.ok) {
             const status = response.status;
+            const errorText = await response.text();
 
-            // Manejar diferentes códigos de error
             if (status === 429) {
               return res.status(429).json({
-                error: "Límite de solicitudes alcanzado. Espera unos minutos o agrega una API key.",
-                code: "RATE_LIMITED",
-                withApiKey: !!apiKey
+                error: "Límite de solicitudes alcanzado. Intenta más tarde.",
+                code: "RATE_LIMITED"
               });
             }
 
-            if (status === 400) {
-              return res.status(400).json({
-                error: "URL inválida o no accesible",
-                code: "INVALID_URL"
-              });
-            }
-
-            const errorText = await response.text();
-            console.error(`Error ${status} de PageSpeed API:`, errorText.substring(0, 200));
-
+            console.error(`Error ${status} de PageSpeed API:`, errorText.substring(0, 500));
             throw new Error(`PageSpeed API error: ${status}`);
           }
 
           const data = await response.json();
 
-          // Simplificar y estructurar los datos para el frontend
-          const simplifiedData = {
-            success: true,
-            analyzedUrl: validatedUrl.toString(),
-            strategy: strategy,
-            fetchTime: data.lighthouseResult.fetchTime,
+          // Procesar TODOS los datos de manera estructurada
+          const processedData = processPageSpeedData(data, validatedUrl.toString(), strategy);
 
-            // Puntuaciones principales
-            categories: Object.entries(data.lighthouseResult.categories).reduce((acc, [key, category]) => {
-              acc[key] = {
-                title: category.title,
-                score: Math.round(category.score * 100),
-                description: category.description
-              };
-              return acc;
-            }, {}),
-
-            // Métricas específicas
-            audits: {
-              'first-contentful-paint': data.lighthouseResult.audits['first-contentful-paint'],
-              'largest-contentful-paint': data.lighthouseResult.audits['largest-contentful-paint'],
-              'cumulative-layout-shift': data.lighthouseResult.audits['cumulative-layout-shift'],
-              'total-blocking-time': data.lighthouseResult.audits['total-blocking-time'],
-              'speed-index': data.lighthouseResult.audits['speed-index']
-            },
-
-            // Información técnica
-            userAgent: data.lighthouseResult.userAgent,
-            lighthouseVersion: data.lighthouseResult.lighthouseVersion,
-
-            // Datos raw para debug
-            _raw: apiKey ? undefined : data // Solo incluir datos raw si no hay API key
-          };
-
-          res.json(simplifiedData);
+          res.json(processedData);
 
         } catch (fetchError) {
           clearTimeout(timeoutId);
 
           if (fetchError.name === 'AbortError') {
-            throw new Error("Timeout: La solicitud tardó demasiado. Intenta con una URL más simple.");
+            throw new Error("Timeout: La solicitud tardó demasiado (45s)");
           }
-
           throw fetchError;
         }
 
       } catch (err) {
         console.error("❌ Error en análisis de performance:", err.message);
 
-        // Manejar diferentes tipos de errores
-        let statusCode = 500;
-        let errorMessage = err.message;
-        let errorCode = "UNKNOWN_ERROR";
-
-        if (err.message.includes("ENOTFOUND") || err.message.includes("ECONNREFUSED")) {
-          statusCode = 400;
-          errorMessage = "No se puede conectar con la URL. Verifica que sea accesible.";
-          errorCode = "CONNECTION_ERROR";
-        }
-
-        if (err.message.includes("Timeout")) {
-          statusCode = 408;
-          errorMessage = "La solicitud tardó demasiado. La URL puede ser muy compleja.";
-          errorCode = "TIMEOUT";
-        }
-
-        res.status(statusCode).json({
-          error: errorMessage,
-          code: errorCode,
-          suggestion: "Intenta con otra URL o verifica tu conexión a internet."
+        res.status(500).json({
+          error: err.message,
+          code: "ANALYSIS_ERROR",
+          suggestion: "Verifica la URL y tu conexión a internet"
         });
       }
     });
+
+    // ========== FUNCIÓN PARA PROCESAR DATOS COMPLETOS ==========
+    function processPageSpeedData(rawData, url, strategy) {
+      const lighthouse = rawData.lighthouseResult;
+      const loadingExperience = rawData.loadingExperience;
+
+      return {
+        success: true,
+        url: url,
+        strategy: strategy,
+        fetchTime: lighthouse.fetchTime,
+
+        // 1. PUNTUACIONES POR CATEGORÍA
+        categories: Object.entries(lighthouse.categories).reduce((acc, [key, category]) => {
+          acc[key] = {
+            id: key,
+            title: category.title,
+            description: category.description,
+            score: Math.round(category.score * 100),
+            scoreRaw: category.score,
+            manualDescription: category.manualDescription,
+            auditRefs: category.auditRefs || []
+          };
+          return acc;
+        }, {}),
+
+        // 2. MÉTRICAS DE CORE WEB VITALS (COMPLETAS)
+        metrics: {
+          performance: {
+            // Core Web Vitals
+            'largest-contentful-paint': getAuditData(lighthouse.audits, 'largest-contentful-paint'),
+            'cumulative-layout-shift': getAuditData(lighthouse.audits, 'cumulative-layout-shift'),
+            'interaction-to-next-paint': getAuditData(lighthouse.audits, 'interaction-to-next-paint') ||
+                                        getAuditData(lighthouse.audits, 'total-blocking-time'),
+
+            // Otras métricas importantes
+            'first-contentful-paint': getAuditData(lighthouse.audits, 'first-contentful-paint'),
+            'speed-index': getAuditData(lighthouse.audits, 'speed-index'),
+            'total-blocking-time': getAuditData(lighthouse.audits, 'total-blocking-time'),
+            'max-potential-fid': getAuditData(lighthouse.audits, 'max-potential-fid'),
+            'time-to-first-byte': getAuditData(lighthouse.audits, 'server-response-time'),
+
+            // Métricas de carga
+            'first-meaningful-paint': getAuditData(lighthouse.audits, 'first-meaningful-paint'),
+            'estimated-input-latency': getAuditData(lighthouse.audits, 'estimated-input-latency')
+          }
+        },
+
+        // 3. AUDITORÍAS DETALLADAS (AGRUPADAS POR CATEGORÍA)
+        audits: {
+          passed: Object.entries(lighthouse.audits)
+            .filter(([_, audit]) => audit.score === 1 || audit.score === null)
+            .reduce((acc, [key, audit]) => {
+              acc[key] = formatAudit(audit);
+              return acc;
+            }, {}),
+
+          opportunities: Object.entries(lighthouse.audits)
+            .filter(([_, audit]) => audit.score !== null && audit.score < 1)
+            .reduce((acc, [key, audit]) => {
+              acc[key] = formatAudit(audit);
+              return acc;
+            }, {}),
+
+          informational: Object.entries(lighthouse.audits)
+            .filter(([_, audit]) => audit.score === null)
+            .reduce((acc, [key, audit]) => {
+              acc[key] = formatAudit(audit);
+              return acc;
+            }, {})
+        },
+
+        // 4. DIAGNÓSTICO DETALLADO
+        diagnostics: Object.entries(lighthouse.audits)
+          .filter(([key, audit]) =>
+            audit.score !== null &&
+            audit.score < 1 &&
+            audit.details &&
+            audit.details.type === 'opportunity'
+          )
+          .map(([key, audit]) => ({
+            id: key,
+            title: audit.title,
+            description: audit.description,
+            score: audit.score,
+            displayValue: audit.displayValue,
+            numericValue: audit.numericValue,
+            numericUnit: audit.numericUnit,
+            details: audit.details
+          })),
+
+        // 5. EXPERIENCIA DE CARGA REAL
+        loadingExperience: loadingExperience ? {
+          metrics: loadingExperience.metrics,
+          overall_category: loadingExperience.overall_category,
+          initial_url: loadingExperience.initial_url
+        } : null,
+
+        // 6. INFORMACIÓN TÉCNICA
+        environment: {
+          userAgent: lighthouse.userAgent,
+          lighthouseVersion: lighthouse.lighthouseVersion,
+          requestedUrl: lighthouse.requestedUrl,
+          finalUrl: lighthouse.finalUrl,
+          timing: lighthouse.timing
+        },
+
+        // 7. CONSEJOS Y RECOMENDACIONES
+        recommendations: generateRecommendations(lighthouse.audits),
+
+        // 8. DATOS RAW PARA REFERENCIA
+        _raw: {
+          categories: lighthouse.categories,
+          audits: Object.keys(lighthouse.audits).length,
+          timing: lighthouse.timing
+        }
+      };
+    }
+
+    // ========== FUNCIONES AUXILIARES ==========
+    function getAuditData(audits, key) {
+      const audit = audits[key];
+      if (!audit) return null;
+
+      return {
+        title: audit.title,
+        description: audit.description,
+        displayValue: audit.displayValue,
+        score: audit.score,
+        numericValue: audit.numericValue,
+        numericUnit: audit.numericUnit
+      };
+    }
+
+    function formatAudit(audit) {
+      return {
+        title: audit.title,
+        description: audit.description,
+        displayValue: audit.displayValue,
+        score: audit.score,
+        numericValue: audit.numericValue,
+        numericUnit: audit.numericUnit,
+        details: audit.details,
+        warnings: audit.warnings,
+        explanation: audit.explanation
+      };
+    }
+
+    function generateRecommendations(audits) {
+      const recommendations = [];
+
+      // Recomendaciones basadas en auditorías
+      const criticalAudits = Object.entries(audits)
+        .filter(([_, audit]) => audit.score !== null && audit.score < 0.5)
+        .slice(0, 10);
+
+      criticalAudits.forEach(([key, audit]) => {
+        recommendations.push({
+          priority: 'HIGH',
+          title: audit.title,
+          description: audit.description,
+          auditId: key,
+          estimatedSavings: audit.displayValue
+        });
+      });
+
+      // Recomendaciones generales
+      recommendations.push(
+        {
+          priority: 'MEDIUM',
+          title: 'Optimizar imágenes',
+          description: 'Comprime y usa formatos modernos como WebP'
+        },
+        {
+          priority: 'MEDIUM',
+          title: 'Minificar recursos',
+          description: 'Minifica CSS, JavaScript y HTML'
+        },
+        {
+          priority: 'LOW',
+          title: 'Implementar lazy loading',
+          description: 'Carga imágenes solo cuando son visibles'
+        }
+      );
+
+      return recommendations;
+    }
 
     // Endpoint alternativo usando PageSpeed Insights público (sin API)
     app.post("/api/analyze-performance-alt", async (req, res) => {

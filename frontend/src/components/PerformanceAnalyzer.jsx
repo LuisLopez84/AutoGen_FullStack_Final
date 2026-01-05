@@ -1,12 +1,13 @@
 import React, { useState } from "react";
-import ApiKeyConfig from "./ApiKeyConfig.jsx"; // Importar el componente
+import ApiKeyConfig from "./ApiKeyConfig.jsx";
 
 export default function PerformanceAnalyzer() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-  const [mode, setMode] = useState("mobile"); // 'mobile' o 'desktop'
+  const [mode, setMode] = useState("desktop");
+  const [activeTab, setActiveTab] = useState("overview"); // 'overview', 'metrics', 'audits', 'diagnostics'
 
   const analyzeUrl = async () => {
     if (!url || !url.trim()) {
@@ -14,7 +15,6 @@ export default function PerformanceAnalyzer() {
       return;
     }
 
-    // Validar formato de URL
     try {
       new URL(url);
     } catch (e) {
@@ -27,7 +27,6 @@ export default function PerformanceAnalyzer() {
     setResults(null);
 
     try {
-      // Intentar con el endpoint principal primero
       const response = await fetch("http://localhost:3000/api/analyze-performance", {
         method: "POST",
         headers: {
@@ -42,31 +41,8 @@ export default function PerformanceAnalyzer() {
       const data = await response.json();
 
       if (!response.ok) {
-        // Si es error 429 (rate limit), usar método alternativo
         if (response.status === 429) {
-          console.log("Usando método alternativo por límite de API...");
-
-          const altResponse = await fetch("http://localhost:3000/api/analyze-performance-alt", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              url: url.trim(),
-              strategy: mode
-            }),
-          });
-
-          const altData = await altResponse.json();
-
-          if (altResponse.ok) {
-            // Agregar nota de que son datos de ejemplo
-            altData._isFallback = true;
-            setResults(altData);
-            setError("⚠️ Mostrando datos de ejemplo (API limitada). Para datos reales, configura una API Key.");
-          } else {
-            throw new Error(altData.error || "Error en método alternativo");
-          }
+          setError("Límite de solicitudes alcanzado. Configura una API Key para análisis ilimitados.");
         } else {
           throw new Error(data.error || "Error al analizar la URL");
         }
@@ -81,11 +57,292 @@ export default function PerformanceAnalyzer() {
     }
   };
 
-  const formatScore = (score) => {
+  // ========== FUNCIONES DE RENDERIZADO ==========
+
+  const renderOverview = () => {
+    if (!results) return null;
+
+    const { categories, metrics } = results;
+
+    return (
+      <div className="overview-section">
+        {/* SCORES PRINCIPALES */}
+        <div className="scores-grid">
+          {Object.values(categories || {}).map((category) => {
+            const scoreInfo = getScoreInfo(category.score);
+            return (
+              <div key={category.id} className="score-card" style={{ borderColor: scoreInfo.color }}>
+                <div className="score-category">{category.title}</div>
+                <div className="score-value" style={{ color: scoreInfo.color }}>
+                  {category.score}
+                </div>
+                <div className="score-label" style={{ background: scoreInfo.color }}>
+                  {scoreInfo.label}
+                </div>
+                <div className="score-description">{category.description}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* CORE WEB VITALS */}
+        <div className="metrics-section">
+          <h4>🌐 Core Web Vitals</h4>
+          <div className="metrics-grid">
+            {['largest-contentful-paint', 'cumulative-layout-shift', 'interaction-to-next-paint'].map((key) => {
+              const metric = metrics?.performance?.[key];
+              if (!metric) return null;
+
+              return (
+                <div key={key} className="metric-card">
+                  <div className="metric-title">{metric.title}</div>
+                  <div className="metric-value">{metric.displayValue || 'N/A'}</div>
+                  <div className="metric-description">{metric.description}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RESUMEN DE AUDITORÍAS */}
+        <div className="audits-summary">
+          <h4>📋 Resumen de Auditorías</h4>
+          <div className="summary-stats">
+            <div className="stat-card">
+              <div className="stat-value">{Object.keys(results.audits?.passed || {}).length}</div>
+              <div className="stat-label">Aprobadas</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{Object.keys(results.audits?.opportunities || {}).length}</div>
+              <div className="stat-label">Oportunidades</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{results.diagnostics?.length || 0}</div>
+              <div className="stat-label">Diagnósticos</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMetrics = () => {
+    if (!results?.metrics?.performance) return null;
+
+    const metrics = results.metrics.performance;
+
+    return (
+      <div className="metrics-detail-section">
+        <h4>📈 Métricas Detalladas</h4>
+
+        <div className="metrics-categories">
+          {/* Core Web Vitals */}
+          <div className="category-group">
+            <h5>⭐ Core Web Vitals</h5>
+            {renderMetricList(['largest-contentful-paint', 'cumulative-layout-shift', 'interaction-to-next-paint', 'total-blocking-time'])}
+          </div>
+
+          {/* Métricas de Carga */}
+          <div className="category-group">
+            <h5>⚡ Métricas de Carga</h5>
+            {renderMetricList(['first-contentful-paint', 'speed-index', 'first-meaningful-paint', 'time-to-first-byte'])}
+          </div>
+
+          {/* Otras Métricas */}
+          <div className="category-group">
+            <h5>📊 Otras Métricas</h5>
+            {renderMetricList(['max-potential-fid', 'estimated-input-latency'])}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMetricList = (keys) => {
+    return keys.map(key => {
+      const metric = results.metrics.performance[key];
+      if (!metric) return null;
+
+      return (
+        <div key={key} className="metric-detail">
+          <div className="metric-header">
+            <span className="metric-name">{metric.title}</span>
+            <span className="metric-score" style={{ color: getScoreColor(metric.score) }}>
+              {metric.score !== null ? `${Math.round(metric.score * 100)}/100` : 'N/A'}
+            </span>
+          </div>
+          <div className="metric-display">{metric.displayValue || 'No disponible'}</div>
+          {metric.description && (
+            <div className="metric-description">{metric.description}</div>
+          )}
+          {metric.numericValue && (
+            <div className="metric-numeric">
+              Valor: {metric.numericValue} {metric.numericUnit || ''}
+            </div>
+          )}
+        </div>
+      );
+    }).filter(Boolean);
+  };
+
+  const renderAudits = () => {
+    if (!results?.audits) return null;
+
+    const { passed, opportunities, informational } = results.audits;
+
+    return (
+      <div className="audits-section">
+        <div className="audits-tabs">
+          <button
+            className={activeTab === 'opportunities' ? 'active' : ''}
+            onClick={() => setActiveTab('opportunities')}
+          >
+            Oportunidades ({Object.keys(opportunities || {}).length})
+          </button>
+          <button
+            className={activeTab === 'passed' ? 'active' : ''}
+            onClick={() => setActiveTab('passed')}
+          >
+            Aprobadas ({Object.keys(passed || {}).length})
+          </button>
+          <button
+            className={activeTab === 'informational' ? 'active' : ''}
+            onClick={() => setActiveTab('informational')}
+          >
+            Informativas ({Object.keys(informational || {}).length})
+          </button>
+        </div>
+
+        <div className="audits-list">
+          {activeTab === 'opportunities' && renderAuditList(opportunities)}
+          {activeTab === 'passed' && renderAuditList(passed)}
+          {activeTab === 'informational' && renderAuditList(informational)}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAuditList = (audits) => {
+    if (!audits || Object.keys(audits).length === 0) {
+      return <div className="no-audits">No hay auditorías en esta categoría</div>;
+    }
+
+    return Object.entries(audits).map(([key, audit]) => (
+      <div key={key} className="audit-item">
+        <div className="audit-header">
+          <span className="audit-title">{audit.title}</span>
+          {audit.score !== null && (
+            <span className="audit-score" style={{ color: getScoreColor(audit.score) }}>
+              {Math.round(audit.score * 100)}
+            </span>
+          )}
+        </div>
+        {audit.displayValue && (
+          <div className="audit-value">{audit.displayValue}</div>
+        )}
+        {audit.description && (
+          <div className="audit-description">{audit.description}</div>
+        )}
+        {audit.details && audit.details.items && audit.details.items.length > 0 && (
+          <div className="audit-details">
+            <details>
+              <summary>Ver detalles ({audit.details.items.length})</summary>
+              <ul>
+                {audit.details.items.slice(0, 5).map((item, idx) => (
+                  <li key={idx}>{JSON.stringify(item)}</li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        )}
+      </div>
+    ));
+  };
+
+  const renderDiagnostics = () => {
+    if (!results?.diagnostics || results.diagnostics.length === 0) {
+      return <div className="no-diagnostics">No hay diagnósticos disponibles</div>;
+    }
+
+    return (
+      <div className="diagnostics-section">
+        <h4>🔍 Diagnósticos Detallados</h4>
+
+        <div className="diagnostics-list">
+          {results.diagnostics.map((diag, idx) => (
+            <div key={idx} className="diagnostic-item">
+              <div className="diagnostic-header">
+                <span className="diagnostic-title">{diag.title}</span>
+                <span className="diagnostic-score" style={{ color: getScoreColor(diag.score) }}>
+                  {Math.round(diag.score * 100)}/100
+                </span>
+              </div>
+              <div className="diagnostic-value">{diag.displayValue}</div>
+              <div className="diagnostic-description">{diag.description}</div>
+
+              {diag.details && diag.details.items && (
+                <div className="diagnostic-savings">
+                  <strong>Ahorro estimado:</strong> {diag.displayValue}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderRecommendations = () => {
+    if (!results?.recommendations) return null;
+
+    const highPriority = results.recommendations.filter(r => r.priority === 'HIGH');
+    const mediumPriority = results.recommendations.filter(r => r.priority === 'MEDIUM');
+    const lowPriority = results.recommendations.filter(r => r.priority === 'LOW');
+
+    const renderPriorityList = (items, title) => {
+      if (items.length === 0) return null;
+
+      return (
+        <div className="priority-group">
+          <h5>{title} ({items.length})</h5>
+          {items.map((rec, idx) => (
+            <div key={idx} className="recommendation-item">
+              <div className="rec-title">{rec.title}</div>
+              <div className="rec-description">{rec.description}</div>
+              {rec.estimatedSavings && (
+                <div className="rec-savings">💾 {rec.estimatedSavings}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    };
+
+    return (
+      <div className="recommendations-section">
+        <h4>💡 Recomendaciones</h4>
+
+        <div className="recommendations-grid">
+          {renderPriorityList(highPriority, '🔥 Alta Prioridad')}
+          {renderPriorityList(mediumPriority, '⚠️ Prioridad Media')}
+          {renderPriorityList(lowPriority, '📋 Prioridad Baja')}
+        </div>
+      </div>
+    );
+  };
+
+  // ========== FUNCIONES AUXILIARES ==========
+  const getScoreInfo = (score) => {
     if (score >= 90) return { color: "#27ae60", label: "Excelente" };
     if (score >= 70) return { color: "#f39c12", label: "Bueno" };
     if (score >= 50) return { color: "#e67e22", label: "Regular" };
     return { color: "#e74c3c", label: "Bajo" };
+  };
+
+  const getScoreColor = (score) => {
+    if (score >= 0.9) return "#27ae60";
+    if (score >= 0.5) return "#f39c12";
+    return "#e74c3c";
   };
 
   const openInPageSpeed = () => {
@@ -93,421 +350,568 @@ export default function PerformanceAnalyzer() {
       setError("Ingresa una URL primero para abrir en PageSpeed");
       return;
     }
-    const pageSpeedUrl = `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(url)}`;
+    const pageSpeedUrl = `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(url)}&form_factor=${mode}`;
     window.open(pageSpeedUrl, "_blank");
   };
 
-  // Función para renderizar resultados
-  const renderResults = () => {
-    if (!results) return null;
-
-    // Verificar si son datos reales o de ejemplo
-    const isFallbackData = results._isFallback;
-
-    // Ajustar acceso a datos según el tipo
-    const categories = results.categories || results.lighthouseResult?.categories;
-    const audits = results.audits || results.lighthouseResult?.audits;
-
-    return (
-      <div style={{
-        background: "white",
-        borderRadius: "10px",
-        border: "1px solid #dee2e6",
-        overflow: "hidden",
-        marginBottom: "20px"
-      }}>
-        {/* Header de resultados */}
-        <div style={{
-          background: "#2c3e50",
-          color: "white",
-          padding: "15px 25px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center"
-        }}>
-          <h3 style={{ margin: 0, fontSize: "18px" }}>
-            📊 Resultados del Análisis
-          </h3>
-          <div style={{
-            padding: "5px 10px",
-            background: mode === "mobile" ? "#3498db" : "#9b59b6",
-            borderRadius: "20px",
-            fontSize: "14px",
-            fontWeight: "600"
-          }}>
-            {mode === "mobile" ? "📱 Móvil" : "🖥️ Escritorio"}
-          </div>
-        </div>
-
-        {/* Banner para datos de ejemplo */}
-        {isFallbackData && (
-          <div style={{
-            padding: "15px",
-            background: "linear-gradient(135deg, #fff3cd, #ffeaa7)",
-            borderBottom: "2px solid #f39c12",
-            color: "#856404"
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-              <span style={{ fontSize: "20px" }}>⚠️</span>
-              <h4 style={{ margin: 0, fontSize: "16px" }}>Datos de Ejemplo</h4>
-            </div>
-            <p style={{ marginBottom: "10px", fontSize: "14px" }}>
-              La API de PageSpeed Insights está limitada. Estos son datos simulados para demostración.
-            </p>
-          </div>
-        )}
-
-        {/* Scores principales */}
-        {categories && (
-          <div style={{
-            padding: "25px",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "20px"
-          }}>
-            {Object.entries(categories).map(([key, category]) => {
-              const score = typeof category.score === 'number' ? category.score : Math.round(category.score * 100);
-              const scoreInfo = formatScore(score);
-
-              return (
-                <div key={key} style={{
-                  background: "#f8f9fa",
-                  padding: "20px",
-                  borderRadius: "8px",
-                  textAlign: "center",
-                  border: `2px solid ${scoreInfo.color}`
-                }}>
-                  <div style={{
-                    fontSize: "14px",
-                    color: "#666",
-                    marginBottom: "10px",
-                    fontWeight: "600"
-                  }}>
-                    {category.title || key}
-                  </div>
-                  <div style={{
-                    fontSize: "42px",
-                    fontWeight: "700",
-                    color: scoreInfo.color,
-                    marginBottom: "5px"
-                  }}>
-                    {score}
-                  </div>
-                  <div style={{
-                    padding: "4px 10px",
-                    background: scoreInfo.color,
-                    color: "white",
-                    borderRadius: "20px",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    display: "inline-block"
-                  }}>
-                    {scoreInfo.label}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Métricas clave */}
-        {audits && (
-          <div style={{ padding: "0 25px 25px" }}>
-            <h4 style={{ color: "#2c3e50", marginBottom: "15px" }}>📈 Métricas Clave</h4>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-              gap: "15px"
-            }}>
-              {['first-contentful-paint', 'largest-contentful-paint', 'cumulative-layout-shift', 'total-blocking-time']
-                .filter(key => audits[key])
-                .map((key) => {
-                  const audit = audits[key];
-                  const score = audit.score || 0.5;
-
-                  return (
-                    <div key={key} style={{
-                      background: "#f8f9fa",
-                      padding: "15px",
-                      borderRadius: "6px",
-                      borderLeft: `4px solid ${score >= 0.9 ? "#27ae60" : score >= 0.5 ? "#f39c12" : "#e74c3c"}`
-                    }}>
-                      <div style={{
-                        fontSize: "14px",
-                        fontWeight: "600",
-                        color: "#2c3e50",
-                        marginBottom: "5px"
-                      }}>
-                        {audit.title || key}
-                      </div>
-                      <div style={{
-                        fontSize: "18px",
-                        fontWeight: "700",
-                        color: "#2c3e50"
-                      }}>
-                        {audit.displayValue || "N/A"}
-                      </div>
-                      {audit.description && (
-                        <div style={{
-                          fontSize: "12px",
-                          color: "#666",
-                          marginTop: "5px"
-                        }}>
-                          {audit.description}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
+  // ========== RENDER PRINCIPAL ==========
   return (
-    <div style={{
-      padding: "30px",
-      background: "white",
-      borderRadius: "12px",
-      boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-      maxWidth: "1200px",
-      margin: "0 auto"
-    }}>
-      <h2 style={{
-        color: "#2c3e50",
-        marginBottom: "25px",
-        textAlign: "center",
-        fontSize: "28px",
-        borderBottom: "2px solid #3498db",
-        paddingBottom: "15px"
-      }}>
-        ⚡ Analizador de Performance Web
-      </h2>
+    <div className="performance-analyzer">
+      <h2>⚡ Analizador de Performance Web (Completo)</h2>
 
-      {/* Input y controles */}
-      <div style={{
-        background: "#f8f9fa",
-        padding: "25px",
-        borderRadius: "10px",
-        marginBottom: "30px",
-        border: "1px solid #dee2e6"
-      }}>
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{
-            display: "block",
-            marginBottom: "8px",
-            fontWeight: "600",
-            color: "#2c3e50"
-          }}>
-            🌐 URL para Analizar
-          </label>
+      {/* ENTRADA DE URL */}
+      <div className="input-section">
+        <div className="url-input">
+          <label>🌐 URL para Analizar</label>
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://ejemplo.com"
-            style={{
-              width: "100%",
-              padding: "12px 15px",
-              border: "2px solid #3498db",
-              borderRadius: "8px",
-              fontSize: "16px",
-              outline: "none",
-              transition: "border-color 0.3s",
-              backgroundColor: "#fff"
-            }}
-            onFocus={(e) => e.target.style.borderColor = "#2980b9"}
-            onBlur={(e) => e.target.style.borderColor = "#3498db"}
           />
-          <small style={{ display: "block", marginTop: "5px", color: "#666", fontSize: "14px" }}>
-            Ingresa la URL completa de la página web que deseas analizar
-          </small>
         </div>
 
-        {/* Selector de modo */}
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{
-            display: "block",
-            marginBottom: "8px",
-            fontWeight: "600",
-            color: "#2c3e50"
-          }}>
-            📱 Dispositivo a Analizar
-          </label>
-          <div style={{ display: "flex", gap: "15px" }}>
+        <div className="mode-selector">
+          <label>📱 Dispositivo</label>
+          <div className="mode-buttons">
             <button
+              className={mode === "mobile" ? "active" : ""}
               onClick={() => setMode("mobile")}
-              style={{
-                flex: 1,
-                padding: "12px",
-                background: mode === "mobile" ? "#3498db" : "#ecf0f1",
-                color: mode === "mobile" ? "white" : "#2c3e50",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontWeight: "600",
-                transition: "all 0.3s",
-                fontSize: "14px"
-              }}
-              onMouseEnter={(e) => {
-                if (mode !== "mobile") e.target.style.background = "#d5dbdb";
-              }}
-              onMouseLeave={(e) => {
-                if (mode !== "mobile") e.target.style.background = "#ecf0f1";
-              }}
             >
               📱 Móvil
             </button>
             <button
+              className={mode === "desktop" ? "active" : ""}
               onClick={() => setMode("desktop")}
-              style={{
-                flex: 1,
-                padding: "12px",
-                background: mode === "desktop" ? "#9b59b6" : "#ecf0f1",
-                color: mode === "desktop" ? "white" : "#2c3e50",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontWeight: "600",
-                transition: "all 0.3s",
-                fontSize: "14px"
-              }}
-              onMouseEnter={(e) => {
-                if (mode !== "desktop") e.target.style.background = "#d5dbdb";
-              }}
-              onMouseLeave={(e) => {
-                if (mode !== "desktop") e.target.style.background = "#ecf0f1";
-              }}
             >
               🖥️ Escritorio
             </button>
           </div>
         </div>
 
-        {/* Botones de acción */}
-        <div style={{ display: "flex", gap: "15px" }}>
+        <div className="action-buttons">
           <button
             onClick={analyzeUrl}
             disabled={loading || !url}
-            style={{
-              flex: 2,
-              padding: "15px",
-              background: loading ? "#95a5a6" : "#27ae60",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: loading ? "not-allowed" : "pointer",
-              fontWeight: "600",
-              fontSize: "16px",
-              transition: "all 0.3s",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "10px"
-            }}
-            onMouseEnter={(e) => {
-              if (!loading && url) e.target.style.background = "#219653";
-            }}
-            onMouseLeave={(e) => {
-              if (!loading && url) e.target.style.background = "#27ae60";
-            }}
+            className="analyze-button"
           >
-            {loading ? (
-              <>
-                <span style={{
-                  display: "inline-block",
-                  width: "20px",
-                  height: "20px",
-                  border: "3px solid rgba(255,255,255,.3)",
-                  borderRadius: "50%",
-                  borderTopColor: "white",
-                  animation: "spin 1s ease-in-out infinite"
-                }}></span>
-                Analizando...
-              </>
-            ) : (
-              "🔍 Analizar Performance"
-            )}
+            {loading ? "⏳ Analizando..." : "🔍 Analizar Performance"}
           </button>
           <button
             onClick={openInPageSpeed}
             disabled={!url.trim()}
-            style={{
-              flex: 1,
-              padding: "15px",
-              background: !url.trim() ? "#bdc3c7" : "#9b59b6",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: !url.trim() ? "not-allowed" : "pointer",
-              fontWeight: "600",
-              fontSize: "16px",
-              transition: "all 0.3s"
-            }}
-            onMouseEnter={(e) => {
-              if (url.trim()) e.target.style.background = "#8e44ad";
-            }}
-            onMouseLeave={(e) => {
-              if (url.trim()) e.target.style.background = "#9b59b6";
-            }}
+            className="external-button"
           >
             📊 Abrir en PageSpeed
           </button>
         </div>
 
         {error && (
-          <div style={{
-            marginTop: "15px",
-            padding: "12px",
-            background: error.includes("⚠️") ? "#fff3cd" : "#ffe6e6",
-            border: error.includes("⚠️") ? "1px solid #ffeaa7" : "1px solid #ffcccc",
-            borderRadius: "6px",
-            color: error.includes("⚠️") ? "#856404" : "#e74c3c",
-            fontSize: "14px"
-          }}>
-            {error.includes("⚠️") ? "⚠️ " : "❌ "}{error.replace("⚠️ ", "").replace("❌ ", "")}
+          <div className="error-message">
+            {error}
           </div>
         )}
       </div>
 
-      {/* Mostrar resultados */}
-      {renderResults()}
+      {/* RESULTADOS */}
+      {results && (
+        <div className="results-container">
+          {/* PESTAÑAS DE NAVEGACIÓN */}
+          <div className="results-tabs">
+            <button
+              className={activeTab === "overview" ? "active" : ""}
+              onClick={() => setActiveTab("overview")}
+            >
+              📊 Resumen
+            </button>
+            <button
+              className={activeTab === "metrics" ? "active" : ""}
+              onClick={() => setActiveTab("metrics")}
+            >
+              📈 Métricas
+            </button>
+            <button
+              className={activeTab === "audits" ? "active" : ""}
+              onClick={() => setActiveTab("audits")}
+            >
+              📋 Auditorías
+            </button>
+            <button
+              className={activeTab === "diagnostics" ? "active" : ""}
+              onClick={() => setActiveTab("diagnostics")}
+            >
+              🔍 Diagnósticos
+            </button>
+            <button
+              className={activeTab === "recommendations" ? "active" : ""}
+              onClick={() => setActiveTab("recommendations")}
+            >
+              💡 Recomendaciones
+            </button>
+          </div>
 
-      {/* Componente de configuración de API Key */}
+          {/* CONTENIDO DE PESTAÑAS */}
+          <div className="results-content">
+            {activeTab === "overview" && renderOverview()}
+            {activeTab === "metrics" && renderMetrics()}
+            {activeTab === "audits" && renderAudits()}
+            {activeTab === "diagnostics" && renderDiagnostics()}
+            {activeTab === "recommendations" && renderRecommendations()}
+          </div>
+
+          {/* INFORMACIÓN DEL ANÁLISIS */}
+          <div className="analysis-info">
+            <div className="info-item">
+              <span>URL:</span>
+              <span>{results.url}</span>
+            </div>
+            <div className="info-item">
+              <span>Dispositivo:</span>
+              <span>{results.strategy === "mobile" ? "📱 Móvil" : "🖥️ Escritorio"}</span>
+            </div>
+            <div className="info-item">
+              <span>Fecha:</span>
+              <span>{new Date(results.fetchTime).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIGURACIÓN DE API KEY */}
       <ApiKeyConfig />
 
-      {/* Información adicional */}
-      <div style={{
-        marginTop: "30px",
-        padding: "20px",
-        background: "#f8f9fa",
-        borderRadius: "10px",
-        border: "1px solid #dee2e6"
-      }}>
-        <h4 style={{ color: "#2c3e50", marginBottom: "10px", fontSize: "18px" }}>
-          ℹ️ ¿Cómo funciona?
-        </h4>
-        <p style={{ color: "#555", lineHeight: "1.6", marginBottom: "15px", fontSize: "14px" }}>
-          Esta herramienta utiliza la API de Google PageSpeed Insights para analizar el performance de tu página web.
-          Proporciona métricas clave como:
-        </p>
-        <ul style={{ color: "#555", paddingLeft: "20px", lineHeight: "1.6", fontSize: "14px" }}>
-          <li><strong>Performance Score:</strong> Puntuación general del 0-100</li>
-          <li><strong>First Contentful Paint:</strong> Tiempo hasta que se pinta el primer contenido</li>
-          <li><strong>Largest Contentful Paint:</strong> Tiempo hasta que se pinta el contenido más grande</li>
-          <li><strong>Cumulative Layout Shift:</strong> Estabilidad visual de la página</li>
-          <li><strong>Total Blocking Time:</strong> Tiempo total que el hilo principal está bloqueado</li>
-        </ul>
-      </div>
-
-      {/* Estilos CSS inline para spinner */}
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
+      {/* ESTILOS INLINE */}
+      <style jsx>{`
+        .performance-analyzer {
+          padding: 20px;
+          max-width: 1400px;
+          margin: 0 auto;
         }
-      `}</style>
-    </div>
-  );
-}
+
+        h2 {
+          color: #2c3e50;
+          text-align: center;
+          margin-bottom: 30px;
+        }
+
+        .input-section {
+          background: #f8f9fa;
+          padding: 25px;
+          border-radius: 10px;
+          margin-bottom: 30px;
+          display: grid;
+          gap: 20px;
+        }
+
+        .url-input label,
+        .mode-selector label {
+          display: block;
+          margin-bottom: 8px;
+          font-weight: 600;
+          color: #2c3e50;
+        }
+
+        .url-input input {
+          width: 100%;
+          padding: 12px;
+          border: 2px solid #3498db;
+          border-radius: 8px;
+          font-size: 16px;
+        }
+
+        .mode-buttons {
+          display: flex;
+          gap: 10px;
+        }
+
+        .mode-buttons button {
+          flex: 1;
+          padding: 12px;
+          border: 2px solid #ddd;
+          background: white;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.3s;
+        }
+
+        .mode-buttons button.active {
+          background: #3498db;
+          color: white;
+          border-color: #3498db;
+        }
+
+        .action-buttons {
+          display: flex;
+          gap: 15px;
+        }
+
+        .analyze-button {
+          flex: 2;
+          background: #27ae60;
+          color: white;
+          border: none;
+          padding: 15px;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .analyze-button:disabled {
+          background: #95a5a6;
+          cursor: not-allowed;
+        }
+
+        .external-button {
+          flex: 1;
+          background: #9b59b6;
+          color: white;
+          border: none;
+          padding: 15px;
+          border-radius: 8px;
+          cursor: pointer;
+        }
+
+        .error-message {
+          background: #ffe6e6;
+          color: #e74c3c;
+          padding: 12px;
+          border-radius: 6px;
+          border: 1px solid #ffcccc;
+        }
+
+        /* RESULTADOS */
+        .results-container {
+          background: white;
+          border-radius: 10px;
+          border: 1px solid #dee2e6;
+          overflow: hidden;
+          margin-bottom: 30px;
+        }
+
+        .results-tabs {
+          display: flex;
+          background: #2c3e50;
+          overflow-x: auto;
+        }
+
+        .results-tabs button {
+          padding: 15px 20px;
+          background: none;
+          border: none;
+          color: white;
+          cursor: pointer;
+          border-bottom: 3px solid transparent;
+          white-space: nowrap;
+        }
+
+        .results-tabs button.active {
+          background: #34495e;
+          border-bottom-color: #3498db;
+        }
+
+        .results-content {
+          padding: 25px;
+          min-height: 400px;
+        }
+
+        /* OVERVIEW */
+        .scores-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+          gap: 20px;
+          margin-bottom: 30px;
+        }
+
+        .score-card {
+          padding: 20px;
+          border: 3px solid;
+          border-radius: 10px;
+          text-align: center;
+          background: #f8f9fa;
+        }
+       .score-category {
+           font-size: 16px;
+           font-weight: 600;
+           margin-bottom: 10px;
+           color: #2c3e50;
+        }
+
+               .score-value {
+                 font-size: 48px;
+                 font-weight: 700;
+                 margin-bottom: 5px;
+               }
+
+               .score-label {
+                 display: inline-block;
+                 padding: 4px 12px;
+                 border-radius: 20px;
+                 color: white;
+                 font-size: 12px;
+                 font-weight: 600;
+                 margin-bottom: 10px;
+               }
+
+               .score-description {
+                 font-size: 13px;
+                 color: #666;
+                 margin-top: 10px;
+               }
+
+               .metrics-section,
+               .audits-summary {
+                 margin-bottom: 30px;
+               }
+
+               .metrics-grid {
+                 display: grid;
+                 grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                 gap: 15px;
+                 margin-top: 15px;
+               }
+
+               .metric-card {
+                 padding: 15px;
+                 background: #f8f9fa;
+                 border-radius: 8px;
+                 border-left: 4px solid #3498db;
+               }
+
+               .metric-title {
+                 font-weight: 600;
+                 color: #2c3e50;
+                 margin-bottom: 5px;
+               }
+
+               .metric-value {
+                 font-size: 18px;
+                 font-weight: 700;
+                 color: #2c3e50;
+                 margin-bottom: 5px;
+               }
+
+               .summary-stats {
+                 display: flex;
+                 gap: 20px;
+                 margin-top: 15px;
+               }
+
+               .stat-card {
+                 flex: 1;
+                 padding: 20px;
+                 background: #f8f9fa;
+                 border-radius: 8px;
+                 text-align: center;
+               }
+
+               .stat-value {
+                 font-size: 36px;
+                 font-weight: 700;
+                 color: #3498db;
+               }
+
+               .stat-label {
+                 font-size: 14px;
+                 color: #666;
+               }
+
+               /* MÉTRICAS DETALLADAS */
+               .metrics-detail-section {
+                 background: #f8f9fa;
+                 padding: 20px;
+                 border-radius: 8px;
+               }
+
+               .metrics-categories {
+                 display: grid;
+                 gap: 25px;
+                 margin-top: 20px;
+               }
+
+               .category-group h5 {
+                 color: #2c3e50;
+                 margin-bottom: 15px;
+                 padding-bottom: 8px;
+                 border-bottom: 2px solid #3498db;
+               }
+
+               .metric-detail {
+                 background: white;
+                 padding: 15px;
+                 border-radius: 6px;
+                 margin-bottom: 10px;
+                 border: 1px solid #e9ecef;
+               }
+
+               .metric-header {
+                 display: flex;
+                 justify-content: space-between;
+                 align-items: center;
+                 margin-bottom: 8px;
+               }
+
+               .metric-name {
+                 font-weight: 600;
+                 color: #2c3e50;
+               }
+
+               .metric-score {
+                 font-weight: 700;
+                 font-size: 14px;
+               }
+
+               .metric-display {
+                 font-size: 18px;
+                 font-weight: 700;
+                 color: #2c3e50;
+                 margin-bottom: 5px;
+               }
+
+               /* AUDITORÍAS */
+               .audits-tabs {
+                 display: flex;
+                 gap: 10px;
+                 margin-bottom: 20px;
+                 flex-wrap: wrap;
+               }
+
+               .audits-tabs button {
+                 padding: 10px 20px;
+                 background: #f8f9fa;
+                 border: 1px solid #ddd;
+                 border-radius: 6px;
+                 cursor: pointer;
+               }
+
+               .audits-tabs button.active {
+                 background: #3498db;
+                 color: white;
+                 border-color: #3498db;
+               }
+
+               .audit-item {
+                 background: #f8f9fa;
+                 padding: 15px;
+                 border-radius: 6px;
+                 margin-bottom: 10px;
+                 border-left: 4px solid #3498db;
+               }
+
+               .audit-header {
+                 display: flex;
+                 justify-content: space-between;
+                 align-items: center;
+                 margin-bottom: 8px;
+               }
+
+               .audit-title {
+                 font-weight: 600;
+                 color: #2c3e50;
+               }
+
+               .audit-score {
+                 font-weight: 700;
+                 font-size: 16px;
+               }
+                /* DIAGNÓSTICOS */
+                       .diagnostic-item {
+                         background: #fff3cd;
+                         padding: 15px;
+                         border-radius: 6px;
+                         margin-bottom: 10px;
+                         border: 1px solid #ffeaa7;
+                       }
+
+                       .diagnostic-header {
+                         display: flex;
+                         justify-content: space-between;
+                         align-items: center;
+                         margin-bottom: 8px;
+                       }
+
+                       .diagnostic-title {
+                         font-weight: 600;
+                         color: #856404;
+                       }
+
+                       /* RECOMENDACIONES */
+                       .recommendations-grid {
+                         display: grid;
+                         gap: 20px;
+                         margin-top: 20px;
+                       }
+
+                       .priority-group h5 {
+                         padding: 10px;
+                         background: #e8f4fd;
+                         border-radius: 6px;
+                         color: #2c3e50;
+                       }
+
+                       .recommendation-item {
+                         background: white;
+                         padding: 15px;
+                         border-radius: 6px;
+                         margin-bottom: 10px;
+                         border: 1px solid #e9ecef;
+                       }
+
+                       .rec-title {
+                         font-weight: 600;
+                         color: #2c3e50;
+                         margin-bottom: 5px;
+                       }
+
+                       .rec-savings {
+                         background: #d4edda;
+                         padding: 5px 10px;
+                         border-radius: 4px;
+                         margin-top: 8px;
+                         font-size: 12px;
+                         color: #155724;
+                       }
+
+                       /* INFORMACIÓN DEL ANÁLISIS */
+                       .analysis-info {
+                         background: #f8f9fa;
+                         padding: 15px;
+                         border-top: 1px solid #dee2e6;
+                         display: grid;
+                         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                         gap: 15px;
+                       }
+
+                       .info-item {
+                         display: flex;
+                         justify-content: space-between;
+                         font-size: 14px;
+                         color: #666;
+                       }
+
+                       @media (max-width: 768px) {
+                         .scores-grid {
+                           grid-template-columns: 1fr;
+                         }
+
+                         .summary-stats {
+                           flex-direction: column;
+                         }
+
+                         .metrics-grid {
+                           grid-template-columns: 1fr;
+                         }
+
+                         .results-tabs {
+                           flex-wrap: wrap;
+                         }
+
+                         .results-tabs button {
+                           flex: 1;
+                           min-width: 120px;
+                         }
+                       }
+                     `}</style>
+                   </div>
+                 );
+               }
