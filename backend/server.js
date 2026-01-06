@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { normalizePageSpeed } from './pagespeed/normalizePageSpeed.js';
+import { translateToSpanish } from './pagespeed/translateToSpanish.js';
+import { AUDIT_TRANSLATIONS } from './pagespeed/auditTranslations.js';
 import { generatePDF, generateCSV } from './exportUtils.js';
 import express from "express";
 import cors from "cors";
@@ -49,7 +53,7 @@ console.log("   - NODE_ENV:", process.env.NODE_ENV || "development");
 
 
 // ========== DICCIONARIOS DE TRADUCCIÓN ==========
-
+/*
 const AUDIT_TRANSLATIONS = {
   // Categorías
   'performance': 'Rendimiento',
@@ -276,8 +280,41 @@ const AUDIT_TRANSLATIONS = {
   'unitless': 'sin unidad',
   'bytes': 'bytes',
   'KB': 'KB',
-  'MB': 'MB'
+  'MB': 'MB',
+
+    // NUEVAS TRADUCCIONES PARA CORREGIR LOS ERRORES
+
+    // Textos de auditorías específicas
+    'Image elements do not have [alt] attributes': 'Los elementos de imagen no tienen atributos [alt]',
+    'These checks highlight opportunities to improve the accessibility of your web app.':
+      'Estas verificaciones destacan oportunidades para mejorar la accesibilidad de tu aplicación web.',
+    'Automatic detection can only detect a subset of issues and does not guarantee the accessibility of your web app, so manual testing is also encouraged':
+      'La detección automática solo puede identificar un subconjunto de problemas y no garantiza la accesibilidad de tu aplicación web, por lo que también se recomienda realizar pruebas manuales.',
+
+    // Textos de métricas con links
+    'Largest Contentful Paint marks the time at which the largest text or image is painted.':
+      'Largest Contentful Paint marca el tiempo en el que se pinta el texto o imagen más grande.',
+    'Learn more about the Largest Contentful Paint metric':
+      'Más información sobre la métrica Largest Contentful Paint',
+    'developer.chrome.com/docs/lighthouse/accessibility/':
+      'Consulte la documentación oficial de accesibilidad.',
+    'web.dev/articles/how-to-review':
+      'Consulte las guías de revisión manual.',
+
+    // Textos de diagnóstico
+    'Image elements do not have `[alt]` attributes':
+      'Los elementos de imagen no tienen atributos `[alt]`',
+
+    // Encabezados de secciones (para corregir Ø=Ü)
+    '📊 RESUMEN EJECUTIVO': '📊 RESUMEN EJECUTIVO',
+    '📈 MÉTRICAS DETALLADAS': '📈 MÉTRICAS DETALLADAS',
+    '📋 AUDITORÍAS DETALLADAS': '📋 AUDITORÍAS DETALLADAS',
+    '🔍 DIAGNÓSTICOS ESPECÍFICOS': '🔍 DIAGNÓSTICOS ESPECÍFICOS',
+    '💡 RECOMENDACIONES PRIORIZADAS': '💡 RECOMENDACIONES PRIORIZADAS',
+    '📱 EXPERIENCIA REAL DE USUARIOS': '📱 EXPERIENCIA REAL DE USUARIOS',
 };
+
+*/
 
 const CATEGORY_DESCRIPTIONS = {
   'performance': 'Mide qué tan rápido carga tu página y responde a la interacción del usuario.',
@@ -295,7 +332,6 @@ const SCORE_LABELS = {
 };
 
 // ========== FUNCIONES DE TRADUCCIÓN ==========
-
 function translateText(text) {
   if (!text || typeof text !== 'string') return text;
 
@@ -311,7 +347,59 @@ function translateText(text) {
     }
   }
 
+  // Limpiar links y referencias que causan problemas en PDF
+  if (text.includes('http://') || text.includes('https://') || text.includes('developer.chrome.com')) {
+    // Extraer solo el texto descriptivo, eliminando los links
+    const cleanedText = text.replace(/\[.*?\]\(.*?\)/g, ''); // Eliminar markdown links
+    const withoutLinks = cleanedText.replace(/https?:\/\/[^\s]+/g, ''); // Eliminar URLs
+    const withoutLearnMore = withoutLinks.replace(/Learn more about.*/gi, ''); // Eliminar "Learn more"
+    const finalText = withoutLearnMore.replace(/\(https?:\/\/[^)]+\)/g, ''); // Eliminar URLs entre paréntesis
+
+    // Si el texto quedó muy corto, devolver una versión genérica
+    if (finalText.trim().length < 10) {
+      return "Consulte la documentación oficial para más detalles.";
+    }
+
+    return finalText.trim() || text;
+  }
+
   return text;
+}
+
+// ========== FUNCIÓN PARA VALIDAR Y LIMPIAR DATOS PARA PDF ==========
+function validarDatosParaPDF(data) {
+  try {
+    return {
+      ...data,
+      // Asegurar que todas las propiedades existan
+      url: data.url || '',
+      strategy: data.strategy || 'desktop',
+      strategyLabel: data.strategyLabel || (data.strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio'),
+      fecha: data.fecha || new Date().toLocaleDateString('es-ES'),
+      categories: data.categories || {},
+      metrics: data.metrics || { performance: {} },
+      audits: data.audits || { passed: {}, opportunities: {}, informational: {} },
+      diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
+      recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+      loadingExperience: data.loadingExperience || null,
+      summary: data.summary || {}
+    };
+  } catch (error) {
+    console.error('Error validando datos para PDF:', error);
+    return {
+      url: '',
+      strategy: 'desktop',
+      strategyLabel: 'Escritorio',
+      fecha: new Date().toLocaleDateString('es-ES'),
+      categories: {},
+      metrics: { performance: {} },
+      audits: { passed: {}, opportunities: {}, informational: {} },
+      diagnostics: [],
+      recommendations: [],
+      loadingExperience: null,
+      summary: {}
+    };
+  }
 }
 
 function translateAudit(audit) {
@@ -2791,7 +2879,6 @@ function deduplicateDefinitions(definitionsContent) {
     });
 
     // Endpoint para análisis de performance con PageSpeed Insights - VERSIÓN MEJORADA
-    // EN server.js - REEMPLAZAR EL ENDPOINT analyze-performance COMPLETO
     app.post("/api/analyze-performance", async (req, res) => {
       try {
         const { url, strategy = "mobile" } = req.body;
@@ -2992,6 +3079,17 @@ function deduplicateDefinitions(definitionsContent) {
             if (translatedAudit.details && translatedAudit.details.items && !Array.isArray(translatedAudit.details.items)) {
               translatedAudit.details.items = [translatedAudit.details.items];
             }
+
+
+                  // LIMPIEZA ADICIONAL PARA PDF
+                  if (translatedAudit.description) {
+                    // Eliminar links markdown [text](url)
+                    translatedAudit.description = translatedAudit.description.replace(/\[(.*?)\]\(.*?\)/g, '$1');
+                    // Eliminar URLs completas
+                    translatedAudit.description = translatedAudit.description.replace(/https?:\/\/[^\s]+/g, '');
+                    // Eliminar "Learn more" sections
+                    translatedAudit.description = translatedAudit.description.replace(/Learn more about.*/gi, '');
+                  }
             acc[key] = translatedAudit;
             return acc;
           }, {});
@@ -3069,6 +3167,18 @@ function deduplicateDefinitions(definitionsContent) {
 
     function generateSpanishRecommendations(audits, diagnostics) {
       const recommendations = [];
+
+        // Función de limpieza para textos
+        const cleanText = (text) => {
+          if (!text) return text;
+          return text
+            .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+            .replace(/https?:\/\/[^\s]+/g, '')
+            .replace(/Learn more about.*/gi, '')
+            .replace(/`/g, '') // Eliminar backticks
+            .replace(/\n/g, ' ') // Reemplazar saltos de línea
+            .trim();
+        };
 
       // Recomendaciones basadas en diagnósticos críticos
       diagnostics
@@ -3337,7 +3447,21 @@ function deduplicateDefinitions(definitionsContent) {
 
         console.log("📄 Generando PDF para análisis...");
 
-        const pdfBuffer = await generatePDF(analysisData, 'es');
+        // Validar y limpiar datos antes de generar PDF
+        const datosLimpios = {
+          ...analysisData,
+          url: analysisData.url || 'URL no disponible',
+          strategy: analysisData.strategy || 'desktop',
+          strategyLabel: analysisData.strategyLabel || (analysisData.strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio'),
+          fecha: analysisData.fecha || new Date().toLocaleDateString('es-ES'),
+          categories: analysisData.categories || {},
+          metrics: analysisData.metrics || { performance: {} },
+          audits: analysisData.audits || { passed: {}, opportunities: {}, informational: {} },
+          diagnostics: analysisData.diagnostics || [],
+          recommendations: analysisData.recommendations || []
+        };
+
+        const pdfBuffer = await generatePDF(datosLimpios, 'es');
 
         // Configurar headers para descarga
         res.setHeader('Content-Type', 'application/pdf');
@@ -3350,7 +3474,8 @@ function deduplicateDefinitions(definitionsContent) {
         console.error("❌ Error generando PDF:", err);
         res.status(500).json({
           error: "Error al generar PDF",
-          message: err.message
+          message: err.message,
+          stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
         });
       }
     });
@@ -3415,49 +3540,89 @@ function deduplicateDefinitions(definitionsContent) {
       }
     });
 
+
     // ========== ENDPOINT DE EXPORTACIÓN COMPLETA ==========
     app.post("/api/export-complete-report", async (req, res) => {
       try {
         const { analysisData, format } = req.body;
 
-        if (!analysisData) {
-          return res.status(400).json({ error: "Datos de análisis requeridos" });
+        if (!analysisData?.url) {
+          return res.status(400).json({ error: "URL requerida para PageSpeed" });
         }
 
-        console.log(`📤 Exportando reporte completo en formato: ${format}`);
+        const strategy = analysisData.strategy || 'mobile';
 
+        console.log(`📤 Exportando reporte completo (${format}) para ${analysisData.url}`);
+
+        // ================= PAGE SPEED =================
+        const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed` +
+          `?url=${encodeURIComponent(analysisData.url)}` +
+          `&strategy=${strategy}` +
+          `&locale=es` +
+          `&key=${process.env.PAGESPEED_API_KEY}`;
+
+        const response = await fetch(apiUrl);
+        const json = await response.json();
+
+        const lighthouse = json.lighthouseResult;
+        if (!lighthouse) {
+          throw new Error("No se recibió lighthouseResult desde PageSpeed");
+        }
+
+        // ================= NORMALIZAR + TRADUCIR =================
+        const normalized = normalizePageSpeed(lighthouse);
+        const translated = translateToSpanish(normalized);
+
+        const datosFinales = {
+          ...translated,
+          url: json.id,
+          strategy,
+          strategyLabel: strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio',
+          fecha: new Date().toLocaleString('es-ES')
+        };
+        console.log("🧪 PDF DATA KEYS:", Object.keys(datosFinales));
+        console.log("🧪 categories:", Object.keys(datosFinales.categories || {}));
+        console.log("🧪 metrics.performance:", Object.keys(datosFinales.metrics?.performance || {}));
+        console.log("🧪 audits.opportunities:", Object.keys(datosFinales.audits?.opportunities || {}));
+        console.log("🧪 audits.passed:", Object.keys(datosFinales.audits?.passed || {}));
+
+        // ================= EXPORTACIÓN =================
         if (format === 'pdf') {
-          const pdfBuffer = await generatePDF(analysisData, 'es');
+          const pdfBuffer = await generatePDF(datosFinales, 'es');
 
           res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition',
-            `attachment; filename="Reporte_Completo_${analysisData.url.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf"`);
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="Reporte_PageSpeed_${strategy}_${Date.now()}.pdf"`
+          );
           res.setHeader('Content-Length', pdfBuffer.length);
 
-          res.send(pdfBuffer);
+          return res.send(pdfBuffer);
+        }
 
-        } else if (format === 'csv') {
-          const csvContent = await generateCSV(analysisData);
+        if (format === 'csv') {
+          const csvContent = await generateCSV(datosFinales);
 
           res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-          res.setHeader('Content-Disposition',
-            `attachment; filename="Datos_Completos_${analysisData.url.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.csv"`);
-          res.setHeader('Content-Length', Buffer.byteLength(csvContent, 'utf8'));
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="Datos_PageSpeed_${strategy}_${Date.now()}.csv"`
+          );
 
-          res.send(csvContent);
-
-        } else {
-          res.status(400).json({ error: "Formato no soportado. Use 'pdf' o 'csv'" });
+          return res.send(csvContent);
         }
+
+        return res.status(400).json({ error: "Formato no soportado. Use 'pdf' o 'csv'" });
 
       } catch (err) {
         console.error("❌ Error en exportación completa:", err);
         res.status(500).json({
-          error: "Error al generar reporte",
+          error: "Error al generar reporte PageSpeed",
           message: err.message
         });
       }
     });
+
 
     // Endpoint de diagnóstico para PageSpeed
     app.get("/api/debug-pagespeed", (req, res) => {
