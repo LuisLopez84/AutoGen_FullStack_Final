@@ -56,6 +56,31 @@ function cleanTextForPDF(text) {
 export function generatePDF(data, language = 'es') {
   return new Promise((resolve, reject) => {
     try {
+      // VALIDACIÓN CRÍTICA: Asegurar que todos los datos existan
+      console.log('📊 Datos recibidos para PDF:', {
+        hasCategories: !!data.categories,
+        categoriesCount: Object.keys(data.categories || {}).length,
+        hasMetrics: !!data.metrics?.performance,
+        metricsCount: data.metrics?.performance?.items?.length || 0,
+        hasAudits: !!data.audits,
+        hasDiagnostics: !!data.diagnostics,
+        diagnosticsCount: data.diagnostics?.length || 0,
+        hasRecommendations: !!data.recommendations,
+        recommendationsCount: data.recommendations?.length || 0
+      });
+
+      // Asegurar estructura mínima
+      const safeData = {
+        ...data,
+        categories: data.categories || {},
+        metrics: data.metrics || { performance: { items: [] } },
+        audits: data.audits || { passed: {}, opportunities: {}, informational: {} },
+        diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
+        recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+        loadingExperience: data.loadingExperience || null
+      };
+
+      // Continuar con safeData en lugar de data
       const doc = new PDFDocument({
         margin: 50,
         size: 'A4',
@@ -323,10 +348,7 @@ export function generatePDF(data, language = 'es') {
             xPos = 50;
 
             // Nombre de métrica
-            doc.fontSize(10).font('Helvetica')
-               .fillColor('#2c3e50')
                const safeTitle = metric.title || 'Métrica sin nombre';
-
                doc.fontSize(10)
                   .font('Helvetica')
                   .fillColor('#2c3e50')
@@ -573,11 +595,11 @@ export function generatePDF(data, language = 'es') {
                   });
 
                   try {
-                    doc.end();
                   } catch (error) {
                     console.error('Error finalizando PDF:', error);
                     reject(error);
                   }
+                  doc.end();
                 } catch (error) {
                   reject(error);
                 }
@@ -793,22 +815,29 @@ export function generateCSV(data) {
 
       // 3. TODAS LAS MÉTRICAS
       csvData.push(['MÉTRICAS', 'Nombre', 'Valor', 'Unidad', 'Score', 'Estado']);
-      if (data.metrics?.performance) {
-        const metricsItems = data.metrics.performance.items || [];
-        metricsItems.forEach((metric, index) => {
 
-          const estado = metric.score >= 0.9 ? 'EXCELENTE' :
-                        metric.score >= 0.5 ? 'BUENO' : 'MEJORABLE';
+      if (data.metrics?.performance) {
+        const metricsItems = Array.isArray(data.metrics?.performance?.items)
+          ? data.metrics.performance.items
+          : Object.values(data.metrics?.performance || {});
+
+        metricsItems.forEach(metric => {
+          const estado =
+            metric.score >= 0.9 ? 'EXCELENTE' :
+            metric.score >= 0.5 ? 'BUENO' :
+            'MEJORABLE';
+
           csvData.push([
             'MÉTRICAS',
-            metric.title,
+            metric.title || 'Sin nombre',
             metric.numericValue || '',
             metric.numericUnit || '',
-            metric.score ? Math.round(metric.score * 100) : '',
+            metric.score != null ? Math.round(metric.score * 100) : '',
             estado
           ]);
         });
       }
+
       csvData.push([]);
 
       // 4. AUDITORÍAS DETALLADAS
@@ -816,7 +845,11 @@ export function generateCSV(data) {
 
       // Oportunidades
       if (data.audits?.opportunities) {
-        (data.audits.opportunities.items || []).forEach(([key, audit]) => {
+        const opportunityItems = Array.isArray(data.audits?.opportunities?.items)
+          ? data.audits.opportunities.items
+          : Object.values(data.audits?.opportunities || {});
+
+        opportunityItems.forEach(audit => {
           csvData.push([
             'AUDITORÍAS',
             'OPORTUNIDAD',
@@ -831,7 +864,11 @@ export function generateCSV(data) {
 
       // Aprobadas
       if (data.audits?.passed) {
-        Object.entries(data.audits.passed).forEach(([key, audit]) => {
+        const passedItems = Array.isArray(data.audits?.passed?.items)
+          ? data.audits.passed.items
+          : Object.values(data.audits?.passed || {});
+
+        passedItems.forEach(audit => {
           csvData.push([
             'AUDITORÍAS',
             'APROBADA',
@@ -845,41 +882,65 @@ export function generateCSV(data) {
       }
       csvData.push([]);
 
-      // 5. DIAGNÓSTICOS
-      csvData.push(['DIAGNÓSTICOS', 'Título', 'Descripción', 'Valor', 'Severidad', 'Impacto']);
-      if (data.diagnostics) {
-        data.diagnostics.forEach(diag => {
-          csvData.push([
-            'DIAGNÓSTICOS',
-            diag.title,
-            diag.description?.substring(0, 150) || '',
-            diag.displayValue || '',
-            diag.severity || 'MEDIA',
-            'ALTO'
-          ]);
-        });
-      }
+     // 5. DIAGNÓSTICOS COMPLETOS
+     csvData.push(['DIAGNÓSTICOS', 'ID', 'Título', 'Descripción', 'Valor', 'Severidad', 'Impacto', 'Score']);
+
+     const diagnostics = Array.isArray(data.diagnostics)
+       ? data.diagnostics
+       : Object.values(data.diagnostics || {});
+
+     diagnostics.forEach(diag => {
+       csvData.push([
+         'DIAGNÓSTICOS',
+         diag.id || 'N/A',
+         diag.title || 'Sin título',
+         (diag.description || '').substring(0, 200).replace(/"/g, '""'),
+         diag.displayValue || 'N/A',
+         diag.severity || 'MEDIA',
+         diag.impact || 'ALTO',
+         diag.score !== undefined ? Math.round(diag.score * 100) : 'N/A'
+       ]);
+     });
+
+     csvData.push([]);
+
+      // 6. RECOMENDACIONES COMPLETAS
+      csvData.push(['RECOMENDACIONES', 'Prioridad', 'Título', 'Descripción', 'Impacto', 'Acción', 'AuditID', 'Ahorro Estimado']);
+
+      const recommendations = Array.isArray(data.recommendations)
+        ? data.recommendations
+        : Object.values(data.recommendations || {});
+
+      recommendations.forEach(rec => {
+        csvData.push([
+          'RECOMENDACIONES',
+          rec.priority || 'MEDIA',
+          rec.title || 'Sin título',
+          (rec.description || '').substring(0, 150).replace(/"/g, '""'),
+          rec.impact || '',
+          rec.action || '',
+          rec.auditId || '',
+          rec.estimatedSavings || ''
+        ]);
+      });
+
       csvData.push([]);
 
-      // 6. RECOMENDACIONES PRIORIZADAS
-      csvData.push(['RECOMENDACIONES', 'Prioridad', 'Título', 'Descripción', 'Impacto', 'Acción']);
-      if (data.recommendations) {
-        data.recommendations.forEach(rec => {
-          csvData.push([
-            'RECOMENDACIONES',
-            rec.priority,
-            rec.title,
-            rec.description,
-            rec.impact || '',
-            rec.action || ''
-          ]);
-        });
-      }
-      csvData.push([]);
-
-      // 7. EXPERIENCIA DE CARGA
+      // 7. EXPERIENCIA DE CARGA COMPLETA
       if (data.loadingExperience) {
-        csvData.push(['EXPERIENCIA CARGA', 'Métrica', 'Categoría', 'Percentil', 'Estado']);
+        csvData.push(['EXPERIENCIA CARGA', 'Métrica', 'Categoría', 'Percentil', 'Distribución', 'Estado']);
+
+        if (data.loadingExperience.overall_category) {
+          csvData.push([
+            'EXPERIENCIA CARGA',
+            'OVERALL',
+            data.loadingExperience.overall_category || '',
+            '',
+            '',
+            data.loadingExperience.overall_category === 'FAST' ? 'BUENO' : 'MEJORABLE'
+          ]);
+        }
+
         if (data.loadingExperience.metrics) {
           Object.entries(data.loadingExperience.metrics).forEach(([key, metric]) => {
             csvData.push([
@@ -887,10 +948,12 @@ export function generateCSV(data) {
               key,
               metric.category || '',
               metric.percentile || '',
+              JSON.stringify(metric.distributions || []),
               metric.category === 'FAST' ? 'BUENO' : 'MEJORABLE'
             ]);
           });
         }
+        csvData.push([]);
       }
 
       // Convertir a string CSV
