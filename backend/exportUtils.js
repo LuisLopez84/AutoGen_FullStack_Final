@@ -56,6 +56,24 @@ function cleanTextForPDF(text) {
 export function generatePDF(data, language = 'es') {
   return new Promise((resolve, reject) => {
     try {
+          // LOGGING DE DIAGNÓSTICO
+          console.log('🔍 DEBUG generatePDF - Datos recibidos:');
+          console.log('  URL:', data.url);
+          console.log('  Categorías:', Object.keys(data.categories || {}));
+          console.log('  Métricas items:', data.metrics?.performance?.items?.length || 0);
+          console.log('  Auditorías oportunidades:', data.audits?.opportunities?.items?.length || 0);
+          console.log('  Auditorías aprobadas:', data.audits?.passed?.items?.length || 0);
+          console.log('  Diagnósticos:', data.diagnostics?.length || 0);
+          console.log('  Recomendaciones:', data.recommendations?.length || 0);
+
+          // VALIDACIÓN DE DATOS MÍNIMOS
+          if (!data.categories || Object.keys(data.categories).length === 0) {
+            console.warn('⚠️  No hay categorías en los datos');
+          }
+
+          if (!data.metrics?.performance?.items || data.metrics.performance.items.length === 0) {
+            console.warn('⚠️  No hay métricas en los datos');
+          }
       // VALIDACIÓN CRÍTICA: Asegurar que todos los datos existan
       console.log('📊 Datos recibidos para PDF:', {
         hasCategories: !!data.categories,

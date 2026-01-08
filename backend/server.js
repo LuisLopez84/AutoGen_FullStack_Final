@@ -2880,8 +2880,164 @@ function deduplicateDefinitions(definitionsContent) {
       };
     }
 
-    // ========== FUNCIONES AUXILIARES ACTUALIZADAS ==========
+    // ========== FUNCIÓN ESPECÍFICA PARA DATOS DE PDF ==========
+    function prepareDataForPDF(pageSpeedData, url, strategy) {
+      const lighthouse = pageSpeedData.lighthouseResult;
 
+      // 1. CATEGORÍAS
+      const categories = {};
+      Object.entries(lighthouse.categories || {}).forEach(([key, cat]) => {
+        categories[key] = {
+          id: key,
+          title: translateText(cat.title),
+          score: Math.round((cat.score || 0) * 100),
+          value: Math.round((cat.score || 0) * 100),
+          description: translateText(cat.description || '')
+        };
+      });
+
+      // 2. MÉTRICAS
+      const metricsItems = [];
+      Object.entries(lighthouse.audits || {}).forEach(([key, audit]) => {
+        if (audit.numericValue !== undefined || audit.displayValue) {
+          metricsItems.push({
+            id: key,
+            title: translateText(audit.title),
+            description: translateText(audit.description || ''),
+            displayValue: audit.displayValue ? translateText(audit.displayValue) : '',
+            numericValue: audit.numericValue,
+            numericUnit: audit.numericUnit,
+            score: audit.score
+          });
+        }
+      });
+
+      // 3. AUDITORÍAS (oportunidades y aprobadas)
+      const auditsOpportunities = [];
+      const auditsPassed = [];
+
+      Object.entries(lighthouse.audits || {}).forEach(([key, audit]) => {
+        const auditObj = {
+          id: key,
+          title: translateText(audit.title),
+          description: translateText(audit.description || ''),
+          displayValue: audit.displayValue ? translateText(audit.displayValue) : '',
+          score: audit.score,
+          numericValue: audit.numericValue
+        };
+
+        if (audit.score !== null && audit.score < 0.9) {
+          auditsOpportunities.push(auditObj);
+        } else if (audit.score !== null) {
+          auditsPassed.push(auditObj);
+        }
+      });
+
+      // 4. DIAGNÓSTICOS (auditorías con score bajo)
+      const diagnostics = auditsOpportunities.slice(0, 10).map(audit => ({
+        ...audit,
+        severity: audit.score >= 0.5 ? 'MEDIA' : 'ALTA',
+        impact: 'ALTO'
+      }));
+
+      // 5. RECOMENDACIONES EN ESPAÑOL
+      const recommendations = [
+        {
+          priority: 'ALTA',
+          title: 'Optimizar imágenes',
+          description: 'Usa formatos WebP, comprime imágenes y establece dimensiones explícitas',
+          impact: 'Reduce el tamaño de página y mejora LCP',
+          action: 'Implementar compresión de imágenes'
+        },
+        {
+          priority: 'ALTA',
+          title: 'Minificar recursos',
+          description: 'Minifica CSS, JavaScript y HTML para reducir tamaño',
+          impact: 'Mejora tiempo de descarga',
+          action: 'Usar herramientas de minificación'
+        },
+        {
+          priority: 'MEDIA',
+          title: 'Eliminar JavaScript no utilizado',
+          description: 'Reduce código innecesario que se descarga',
+          impact: 'Reduce bundle size',
+          action: 'Implementar Tree Shaking'
+        },
+        {
+          priority: 'MEDIA',
+          title: 'Implementar lazy loading',
+          description: 'Carga imágenes solo cuando son visibles',
+          impact: 'Mejora FCP',
+          action: 'Usar loading="lazy"'
+        },
+        {
+          priority: 'BAJA',
+          title: 'Optimizar fuentes web',
+          description: 'Usa font-display: swap para fuentes',
+          impact: 'Mejora rendimiento visual',
+          action: 'Configurar fuentes optimizadas'
+        }
+      ];
+
+      // 6. EXPERIENCIA DE CARGA (si existe)
+      let loadingExperience = null;
+      if (pageSpeedData.loadingExperience) {
+        loadingExperience = {
+          overall_category: translateText(pageSpeedData.loadingExperience.overall_category || 'DESCONOCIDO'),
+          metrics: {}
+        };
+
+        if (pageSpeedData.loadingExperience.metrics) {
+          Object.entries(pageSpeedData.loadingExperience.metrics).forEach(([key, metric]) => {
+            loadingExperience.metrics[key] = {
+              category: translateText(metric.category || 'DESCONOCIDO'),
+              percentile: metric.percentile
+            };
+          });
+        }
+      }
+
+      // 7. ESTRUCTURA FINAL PARA PDF
+      return {
+        url: url,
+        strategy: strategy,
+        strategyLabel: strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio',
+        fecha: new Date().toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+
+        categories: categories,
+
+        metrics: {
+          performance: {
+            items: metricsItems.slice(0, 20) // Limitar para PDF
+          }
+        },
+
+        audits: {
+          opportunities: {
+            items: auditsOpportunities.slice(0, 15)
+          },
+          passed: {
+            items: auditsPassed.slice(0, 15)
+          }
+        },
+
+        diagnostics: diagnostics,
+        recommendations: recommendations,
+        loadingExperience: loadingExperience,
+
+        summary: {
+          performanceScore: Math.round((lighthouse.categories?.performance?.score || 0) * 100)
+        }
+      };
+    }
+
+    // ========== FUNCIONES AUXILIARES ACTUALIZADAS ==========
     function getSeverity(score) {
       if (score >= 0.9) return 'bajo';
       if (score >= 0.5) return 'medio';
@@ -3348,75 +3504,114 @@ function deduplicateDefinitions(definitionsContent) {
     // ========== ENDPOINT DE EXPORTACIÓN COMPLETA ==========
     app.post("/api/export-complete-report", async (req, res) => {
       try {
-        const { analysisData, format } = req.body;
+        const { url, strategy = "mobile", format = "pdf" } = req.body;
 
-        if (!analysisData?.url) {
-          return res.status(400).json({ error: "URL requerida para PageSpeed" });
+        if (!url) {
+          return res.status(400).json({ error: "URL es requerida" });
         }
 
-        const strategy = analysisData.strategy || 'mobile';
+        console.log(`📤 Exportando reporte ${format.toUpperCase()} para: ${url}`);
 
-        console.log(`📤 Exportando reporte completo (${format}) para ${analysisData.url}`);
+        // Validar URL
+        let validatedUrl;
+        try {
+          validatedUrl = new URL(url);
+        } catch (e) {
+          return res.status(400).json({ error: "URL inválida" });
+        }
 
-        // ================= PAGE SPEED =================
+        // ================= OBTENER DATOS DE PAGESPEED =================
         const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed` +
-          `?url=${encodeURIComponent(analysisData.url)}` +
+          `?url=${encodeURIComponent(validatedUrl.toString())}` +
           `&strategy=${strategy}` +
-          `&locale=es` +
-          `&key=${process.env.PAGESPEED_API_KEY}`;
+          `&category=performance` +
+          `&category=accessibility` +
+          `&category=best-practices` +
+          `&category=seo` +
+          `&locale=es`;
 
-        const response = await fetch(apiUrl);
-        const json = await response.json();
+        // Agregar API Key si existe
+        const finalApiUrl = process.env.PAGESPEED_API_KEY ?
+          `${apiUrl}&key=${process.env.PAGESPEED_API_KEY}` : apiUrl;
 
-        const lighthouse = json.lighthouseResult;
-        if (!lighthouse) {
-          throw new Error("No se recibió lighthouseResult desde PageSpeed");
-        }
+        console.log(`🌐 Consultando PageSpeed API: ${finalApiUrl.substring(0, 100)}...`);
 
-        // ================= PROCESAR CON LA FUNCIÓN CORREGIDA =================
-        const datosFinales = processPageSpeedData(json, analysisData.url, strategy);
-
-        console.log("✅ Datos procesados para PDF:", {
-          categories: Object.keys(datosFinales.categories),
-          metricsCount: datosFinales.metrics?.performance?.items?.length || 0,
-          diagnosticsCount: datosFinales.diagnostics?.length || 0,
-          recommendationsCount: datosFinales.recommendations?.length || 0
+        const response = await fetch(finalApiUrl, {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'AutoGen-Performance-Analyzer/1.0'
+          },
+          timeout: 30000
         });
 
-        // ================= EXPORTACIÓN =================
-        if (format === 'pdf') {
-          // Usar datosFinales directamente que ya están procesados
-          const pdfBuffer = await generatePDF(datosFinales, 'es');
-
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader(
-            'Content-Disposition',
-            `attachment; filename="Reporte_PageSpeed_${strategy}_${Date.now()}.pdf"`
-          );
-          res.setHeader('Content-Length', pdfBuffer.length);
-
-          return res.send(pdfBuffer);
+        if (!response.ok) {
+          throw new Error(`PageSpeed API error: ${response.status}`);
         }
 
-        if (format === 'csv') {
-          const csvContent = await generateCSV(datosFinales);
+        const pageSpeedData = await response.json();
+
+        if (!pageSpeedData.lighthouseResult) {
+          throw new Error("No se recibieron datos de Lighthouse");
+        }
+
+        console.log("✅ Datos de PageSpeed recibidos correctamente");
+
+        // ================= PREPARAR DATOS PARA PDF =================
+        const pdfData = prepareDataForPDF(pageSpeedData, url, strategy);
+
+        console.log("📊 Datos preparados para PDF:", {
+          categories: Object.keys(pdfData.categories).length,
+          metrics: pdfData.metrics?.performance?.items?.length || 0,
+          opportunities: pdfData.audits?.opportunities?.items?.length || 0,
+          passed: pdfData.audits?.passed?.items?.length || 0,
+          diagnostics: pdfData.diagnostics?.length || 0,
+          recommendations: pdfData.recommendations?.length || 0
+        });
+
+        // ================= GENERAR PDF O CSV =================
+        if (format.toLowerCase() === 'pdf') {
+          console.log("🖨️ Generando PDF...");
+
+          try {
+            const pdfBuffer = await generatePDF(pdfData, 'es');
+
+            console.log(`✅ PDF generado: ${pdfBuffer.length} bytes`);
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader(
+              'Content-Disposition',
+              `attachment; filename="Analisis_Performance_${strategy}_${Date.now()}.pdf"`
+            );
+            res.setHeader('Content-Length', pdfBuffer.length);
+
+            return res.send(pdfBuffer);
+          } catch (pdfError) {
+            console.error("❌ Error generando PDF:", pdfError);
+            throw new Error(`Error al generar PDF: ${pdfError.message}`);
+          }
+
+        } else if (format.toLowerCase() === 'csv') {
+          console.log("📊 Generando CSV...");
+
+          const csvContent = await generateCSV(pdfData);
 
           res.setHeader('Content-Type', 'text/csv; charset=utf-8');
           res.setHeader(
             'Content-Disposition',
-            `attachment; filename="Datos_PageSpeed_${strategy}_${Date.now()}.csv"`
+            `attachment; filename="Datos_Performance_${strategy}_${Date.now()}.csv"`
           );
 
           return res.send(csvContent);
+        } else {
+          return res.status(400).json({ error: "Formato no soportado. Use 'pdf' o 'csv'" });
         }
-
-        return res.status(400).json({ error: "Formato no soportado. Use 'pdf' o 'csv'" });
 
       } catch (err) {
         console.error("❌ Error en exportación completa:", err);
         res.status(500).json({
-          error: "Error al generar reporte PageSpeed",
-          message: err.message
+          error: "Error al generar reporte",
+          message: err.message,
+          suggestion: "Verifica la URL y tu conexión a internet"
         });
       }
     });
@@ -3461,6 +3656,162 @@ function deduplicateDefinitions(definitionsContent) {
           "3. Reinicia con: docker-compose down && docker-compose up --build",
           "4. Si usas Docker, verifica el archivo docker-compose.yml"
         ]
+      });
+    });
+
+    // ========== ENDPOINT DE PRUEBA PARA PDF ==========
+    app.post("/api/test-pdf-data", async (req, res) => {
+      try {
+        const { url } = req.body;
+
+        if (!url) {
+          return res.status(400).json({ error: "URL requerida" });
+        }
+
+        // Datos de prueba estructurados
+        const testData = {
+          url: url,
+          strategy: "mobile",
+          strategyLabel: "📱 Móvil",
+          fecha: new Date().toLocaleDateString('es-ES'),
+
+          categories: {
+            performance: {
+              id: "performance",
+              title: "Rendimiento",
+              score: 75,
+              description: "Mide qué tan rápido carga tu página"
+            },
+            accessibility: {
+              id: "accessibility",
+              title: "Accesibilidad",
+              score: 85,
+              description: "Evalúa la accesibilidad del sitio"
+            },
+            'best-practices': {
+              id: "best-practices",
+              title: "Mejores Prácticas",
+              score: 90,
+              description: "Verifica prácticas web modernas"
+            },
+            seo: {
+              id: "seo",
+              title: "SEO",
+              score: 80,
+              description: "Optimización para motores de búsqueda"
+            }
+          },
+
+          metrics: {
+            performance: {
+              items: [
+                {
+                  id: "fcp",
+                  title: "Primer Pintado de Contenido",
+                  description: "Tiempo hasta el primer contenido visible",
+                  displayValue: "1.8 s",
+                  score: 0.9,
+                  numericValue: 1800,
+                  numericUnit: "ms"
+                },
+                {
+                  id: "lcp",
+                  title: "Pintado de Contenido Más Grande",
+                  description: "Tiempo hasta el elemento más grande",
+                  displayValue: "3.2 s",
+                  score: 0.7,
+                  numericValue: 3200,
+                  numericUnit: "ms"
+                }
+              ]
+            }
+          },
+
+          audits: {
+            opportunities: {
+              items: [
+                {
+                  id: "opportunity-1",
+                  title: "Optimizar imágenes",
+                  description: "Las imágenes pueden comprimirse más",
+                  displayValue: "Ahorro potencial: 1.5 s",
+                  score: 0.6
+                }
+              ]
+            },
+            passed: {
+              items: [
+                {
+                  id: "passed-1",
+                  title: "Uso de HTTPS",
+                  description: "El sitio usa HTTPS correctamente",
+                  displayValue: "✅",
+                  score: 1.0
+                }
+              ]
+            }
+          },
+
+          diagnostics: [
+            {
+              id: "diagnostic-1",
+              title: "JavaScript no utilizado",
+              description: "Se encontró 150 KB de JS no utilizado",
+              displayValue: "150 KB",
+              severity: "ALTA",
+              impact: "ALTO",
+              score: 0.4
+            }
+          ],
+
+          recommendations: [
+            {
+              priority: "ALTA",
+              title: "Comprimir imágenes",
+              description: "Usa formatos WebP para imágenes",
+              impact: "Alta reducción de tamaño",
+              action: "Convertir imágenes a WebP"
+            }
+          ],
+
+          loadingExperience: {
+            overall_category: "RÁPIDO",
+            metrics: {
+              "FCP": { category: "RÁPIDO", percentile: 75 },
+              "LCP": { category: "PROMEDIO", percentile: 60 }
+            }
+          }
+        };
+
+        // Generar PDF con datos de prueba
+        const pdfBuffer = await generatePDF(testData, 'es');
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Test_PDF_${Date.now()}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+
+        return res.send(pdfBuffer);
+
+      } catch (err) {
+        console.error("❌ Error en test PDF:", err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // ========== ENDPOINT DE DIAGNÓSTICO ==========
+    app.get("/api/debug-pdf", (req, res) => {
+      res.json({
+        status: "OK",
+        pdfFunctions: {
+          generatePDF: "exists",
+          generateCSV: "exists"
+        },
+        endpoints: {
+          exportCompleteReport: "/api/export-complete-report",
+          testPDF: "/api/test-pdf-data",
+          analyzePerformance: "/api/analyze-performance"
+        },
+        instructions: "Usa /api/test-pdf-data para probar el PDF con datos simulados"
       });
     });
 
