@@ -722,11 +722,12 @@ const renderizarResumen = () => {
           </div>
         </div>
       )}
-      <ApiKeyConfig
-        onApiKeySet={() => {
-          window.location.reload();
-        }}
-      />
+	  {/* CONFIGURACIÓN DE API KEY */}
+	  <ApiKeyConfig
+	  onApiKeySet={() => {
+	  window.location.reload();
+	  }}
+	 />
 
       {/* ESTILOS */}
       <style jsx>{`
@@ -1693,7 +1694,6 @@ const renderizarResumen = () => {
             .info-analisis {
               grid-template-columns: 1fr;
             }
-          }
       `}</style>
     </div>
   );
