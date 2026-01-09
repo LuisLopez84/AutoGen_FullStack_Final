@@ -9,6 +9,8 @@ export default function PerformanceAnalyzerSpanish() {
   const [modo, setModo] = useState("desktop");
   const [pestanaActiva, setPestanaActiva] = useState("resumen");
 
+
+
   const analizarUrl = async () => {
     if (!url || !url.trim()) {
       setError("Por favor ingresa una URL válida");
@@ -482,10 +484,62 @@ const renderizarResumen = () => {
     setError(null);
 
     try {
-      console.log(`📤 Exportando ${formato.toUpperCase()} para: ${url}`);
+      console.log(`📤 Exportando ${formato.toUpperCase()} para: ${url}`, {
+        resultados: resultados,
+        tieneCategories: !!resultados.categories,
+        tieneMetricsItems: !!resultados.metrics?.performance?.items,
+        tieneAudits: !!resultados.audits
+      });
 
-      // Para PDF: usar /api/export-pdf
-      // Para CSV: usar /api/export-csv
+      // Estructurar datos específicamente para PDF
+      const datosParaExportar = {
+        url: url.trim(),
+        strategy: modo,
+        strategyLabel: modo === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio',
+        fecha: resultados.fecha || new Date().toLocaleDateString('es-ES'),
+
+        // Asegurar que categories existe como objeto
+        categories: resultados.categories || {},
+
+        // Asegurar estructura de metrics con items array
+        metrics: {
+          performance: {
+            items: Array.isArray(resultados.metrics?.performance?.items)
+              ? resultados.metrics.performance.items
+              : Object.values(resultados.metrics?.performance || {})
+          }
+        },
+
+        // Asegurar estructura de audits con items array
+        audits: {
+          opportunities: {
+            items: Array.isArray(resultados.audits?.opportunities?.items)
+              ? resultados.audits.opportunities.items
+              : Object.values(resultados.audits?.opportunities || {})
+          },
+          passed: {
+            items: Array.isArray(resultados.audits?.passed?.items)
+              ? resultados.audits.passed.items
+              : Object.values(resultados.audits?.passed || {})
+          }
+        },
+
+        // Asegurar arrays
+        diagnostics: Array.isArray(resultados.diagnostics) ? resultados.diagnostics : [],
+        recommendations: Array.isArray(resultados.recommendations) ? resultados.recommendations : [],
+
+        // Experiencia de carga opcional
+        loadingExperience: resultados.loadingExperience || null
+      };
+
+      console.log("📊 Datos estructurados para exportación:", {
+        categories: Object.keys(datosParaExportar.categories).length,
+        metricsItems: datosParaExportar.metrics.performance.items.length,
+        opportunities: datosParaExportar.audits.opportunities.items.length,
+        passed: datosParaExportar.audits.passed.items.length
+      });
+
+      // Seleccionar endpoint correcto
       const endpoint = formato === 'pdf'
         ? 'http://localhost:3000/api/export-pdf'
         : 'http://localhost:3000/api/export-csv';
@@ -496,15 +550,14 @@ const renderizarResumen = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          analysisData: resultados,    // Enviar los resultados YA OBTENIDOS
-          url: url.trim(),             // URL para referencia
-          strategy: modo               // Modo usado
+          analysisData: datosParaExportar
         }),
       });
 
       if (!respuesta.ok) {
-        const errorData = await respuesta.json();
-        throw new Error(errorData.error || `Error ${respuesta.status} al generar ${formato}`);
+        const errorText = await respuesta.text();
+        console.error("❌ Error del servidor:", errorText);
+        throw new Error(`Error ${respuesta.status} al generar ${formato}`);
       }
 
       // Crear blob y descargar
@@ -514,7 +567,7 @@ const renderizarResumen = () => {
       a.href = downloadUrl;
 
       // Nombre del archivo
-      const nombreArchivo = `Analisis_Performance_${modo}_${Date.now()}.${formato}`;
+      const nombreArchivo = `Analisis_Performance_${modo}_${new Date().toISOString().slice(0,10)}.${formato}`;
       a.download = nombreArchivo;
 
       document.body.appendChild(a);
@@ -525,7 +578,7 @@ const renderizarResumen = () => {
       console.log(`✅ ${formato.toUpperCase()} descargado: ${nombreArchivo}`);
 
     } catch (err) {
-      console.error(`Error exportando ${formato.toUpperCase()}:`, err);
+      console.error(`❌ Error exportando ${formato.toUpperCase()}:`, err);
       setError(`Error al exportar ${formato.toUpperCase()}: ${err.message}`);
     } finally {
       setLoading(false);
@@ -578,71 +631,73 @@ const renderizarResumen = () => {
             {loading ? "⏳ Analizando..." : "🔍 Analizar Performance"}
           </button>
 
-          <button
-            onClick={abrirEnPageSpeed}
-            disabled={!url.trim()}
-            className="boton-externo"
-          >
-            📊 Abrir en PageSpeed
-          </button>
-
-          {/* BOTONES DE EXPORTACIÓN */}
-          <div style={{
-            display: 'flex',
-            gap: '10px',
-            marginTop: '15px',
-            flexWrap: 'wrap'
-          }}>
+          <div className="botones-secundarios">
             <button
-              onClick={() => exportarReporteCompleto('pdf')}
-              disabled={loading || !url || !resultados}
-              style={{
-                padding: '12px 20px',
-                background: '#e74c3c',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: !url || !resultados ? 'not-allowed' : 'pointer',
-                opacity: !url || !resultados ? 0.6 : 1,
-                fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
+              onClick={abrirEnPageSpeed}
+              disabled={!url.trim()}
+              className="boton-externo"
             >
-              📄 Exportar PDF Completo
+              📊 Abrir en PageSpeed
             </button>
 
-            <button
-              onClick={() => exportarReporteCompleto('csv')}
-              disabled={loading || !url || !resultados}
-              style={{
-                padding: '12px 20px',
-                background: '#27ae60',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: !url || !resultados ? 'not-allowed' : 'pointer',
-                opacity: !url || !resultados ? 0.6 : 1,
-                fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              📊 Exportar CSV Completo
-            </button>
-          </div>
-        </div>
+            {/* BOTONES DE EXPORTACIÓN */}
+            <div style={{
+              display: 'flex',
+              gap: '10px',
+              marginTop: '15px',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={() => exportarReporteCompleto('pdf')}
+                disabled={loading || !url || !resultados}
+                style={{
+                  padding: '12px 20px',
+                  background: '#e74c3c',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: !url || !resultados ? 'not-allowed' : 'pointer',
+                  opacity: !url || !resultados ? 0.6 : 1,
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                📄 Exportar PDF Completo
+              </button>
 
-        {error && (
-          <div className="mensaje-error">
-            {error}
+              <button
+                onClick={() => exportarReporteCompleto('csv')}
+                disabled={loading || !url || !resultados}
+                style={{
+                  padding: '12px 20px',
+                  background: '#27ae60',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: !url || !resultados ? 'not-allowed' : 'pointer',
+                  opacity: !url || !resultados ? 0.6 : 1,
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                📊 Exportar CSV Completo
+              </button>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* RESULTADOS */}
+          {error && (
+                <div className="mensaje-error">
+                  {error}
+                </div>
+              )}
+            </div> {/* Este cierra .botones-accion */}
+          </div> {/* Este cierra .seccion-entrada */}
+
+          {/* RESULTADOS */}
       {resultados && (
         <div className="contenedor-resultados">
           {/* PESTAÑAS DE NAVEGACIÓN */}
@@ -722,12 +777,13 @@ const renderizarResumen = () => {
           </div>
         </div>
       )}
-	  {/* CONFIGURACIÓN DE API KEY */}
-	  <ApiKeyConfig
-	  onApiKeySet={() => {
-	  window.location.reload();
-	  }}
-	 />
+
+      {/* CONFIGURACIÓN DE API KEY */}
+      <ApiKeyConfig
+        onApiKeySet={() => {
+          window.location.reload();
+        }}
+      />
 
       {/* ESTILOS */}
       <style jsx>{`
@@ -1658,43 +1714,44 @@ const renderizarResumen = () => {
           }
       }
 
-  /* Ajustar grid de botones para móviles */
-            @media (max-width: 768px) {
-              .botones-accion {
-                flex-direction: column;
-              }
-
-              .boton-exportar {
-                width: 100%;
-              }
-            }
-
-          /* RESPONSIVE */
+/* Ajustar grid de botones para móviles */
           @media (max-width: 768px) {
-            .grid-puntuaciones {
-              grid-template-columns: 1fr;
-            }
-
-            .pestanas-resultados {
-              flex-wrap: wrap;
-            }
-        }
-
-            .pestanas-resultados button {
-              flex: 1;
-              min-width: 130px;
-              font-size: 14px;
-              padding: 14px 10px;
-            }
-
             .botones-accion {
               flex-direction: column;
             }
 
-            .info-analisis {
-              grid-template-columns: 1fr;
+            .boton-exportar {
+              width: 100%;
             }
-      `}</style>
+          }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+          .grid-puntuaciones {
+            grid-template-columns: 1fr;
+          }
+
+          .pestanas-resultados {
+            flex-wrap: wrap;
+          }
+      }
+
+          .pestanas-resultados button {
+            flex: 1;
+            min-width: 130px;
+            font-size: 14px;
+            padding: 14px 10px;
+          }
+
+          .botones-accion {
+            flex-direction: column;
+          }
+
+          .info-analisis {
+            grid-template-columns: 1fr;
+          }
+      }
+    `}</style>
     </div>
   );
 }

@@ -104,35 +104,113 @@ function translateText(text) {
 // ========== FUNCIÓN PARA VALIDAR Y LIMPIAR DATOS PARA PDF ==========
 function validarDatosParaPDF(data) {
   try {
-    return {
+    console.log("🔍 Validando datos para PDF:", {
+      hasMetricsItems: !!data.metrics?.performance?.items,
+      hasAuditsOpportunities: !!data.audits?.opportunities?.items,
+      hasAuditsPassed: !!data.audits?.passed?.items
+    });
+
+    // Crear estructura mínima garantizada
+    const datosValidados = {
       ...data,
-      // Asegurar que todas las propiedades existan
-      url: data.url || '',
+      // Información básica
+      url: data.url || data.analyzedUrl || 'URL no disponible',
       strategy: data.strategy || 'desktop',
-      strategyLabel: data.strategyLabel || (data.strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio'),
+      strategyLabel: data.strategyLabel ||
+                    (data.strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio'),
       fecha: data.fecha || new Date().toLocaleDateString('es-ES'),
+
+      // CATEGORÍAS (obligatorio)
       categories: data.categories || {},
-      metrics: data.metrics || { performance: {} },
-      audits: data.audits || { passed: {}, opportunities: {}, informational: {} },
-      diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
-      recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+
+      // MÉTRICAS (con items array obligatorio)
+      metrics: {
+        performance: {
+          items: Array.isArray(data.metrics?.performance?.items)
+            ? data.metrics.performance.items
+            : Object.values(data.metrics?.performance || {})
+                    .filter(m => m && m.title)
+                    .map(m => ({
+                      id: m.id || m.title.toLowerCase().replace(/\s+/g, '-'),
+                      title: m.title || 'Sin título',
+                      description: m.description || '',
+                      displayValue: m.displayValue || '',
+                      numericValue: m.numericValue,
+                      numericUnit: m.numericUnit,
+                      score: m.score
+                    }))
+        }
+      },
+
+      // AUDITORÍAS (estructura obligatoria con items)
+      audits: {
+        opportunities: {
+          items: Array.isArray(data.audits?.opportunities?.items)
+            ? data.audits.opportunities.items
+            : Object.values(data.audits?.opportunities || {})
+                    .filter(a => a && a.title)
+        },
+        passed: {
+          items: Array.isArray(data.audits?.passed?.items)
+            ? data.audits.passed.items
+            : Object.values(data.audits?.passed || {})
+                    .filter(a => a && a.title)
+        }
+      },
+
+      // DIAGNÓSTICOS (array obligatorio)
+      diagnostics: Array.isArray(data.diagnostics)
+        ? data.diagnostics
+        : [],
+
+      // RECOMENDACIONES (array obligatorio)
+      recommendations: Array.isArray(data.recommendations)
+        ? data.recommendations
+        : [],
+
+      // EXPERIENCIA DE CARGA
       loadingExperience: data.loadingExperience || null,
-      summary: data.summary || {}
+
+      // RESUMEN
+      summary: data.summary || {
+        performanceScore: data.categories?.performance?.score || 0
+      }
     };
+
+    // Log de validación
+    console.log("✅ Datos validados para PDF:", {
+      metricsItems: datosValidados.metrics.performance.items.length,
+      opportunities: datosValidados.audits.opportunities.items.length,
+      passed: datosValidados.audits.passed.items.length,
+      diagnostics: datosValidados.diagnostics.length,
+      recommendations: datosValidados.recommendations.length
+    });
+
+    return datosValidados;
   } catch (error) {
-    console.error('Error validando datos para PDF:', error);
+    console.error('❌ Error validando datos para PDF:', error);
+
+    // Retornar datos mínimos para evitar error
     return {
-      url: '',
+      url: 'Error en datos',
       strategy: 'desktop',
       strategyLabel: 'Escritorio',
       fecha: new Date().toLocaleDateString('es-ES'),
       categories: {},
-      metrics: { performance: {} },
-      audits: { passed: {}, opportunities: {}, informational: {} },
+      metrics: { performance: { items: [] } },
+      audits: { opportunities: { items: [] }, passed: { items: [] } },
       diagnostics: [],
-      recommendations: [],
+      recommendations: [
+        {
+          priority: 'ALTA',
+          title: 'Error en datos de análisis',
+          description: 'No se pudieron procesar los datos correctamente',
+          impact: 'No se puede generar reporte completo',
+          action: 'Verificar la URL y volver a intentar'
+        }
+      ],
       loadingExperience: null,
-      summary: {}
+      summary: { performanceScore: 0 }
     };
   }
 }
@@ -3393,10 +3471,7 @@ function deduplicateDefinitions(definitionsContent) {
     });
 
 
-
-    // ========== ENDPOINTS DE EXPORTACIÓN ==========
-
-    // Exportar a PDF
+    // ========== ENDPOINT DE EXPORTACIÓN PDF ==========
     app.post("/api/export-pdf", async (req, res) => {
       try {
         const { analysisData } = req.body;
@@ -3405,25 +3480,27 @@ function deduplicateDefinitions(definitionsContent) {
           return res.status(400).json({ error: "Datos de análisis requeridos" });
         }
 
-        console.log("📄 Generando PDF para análisis...");
+        console.log("📄 Generando PDF con datos recibidos:", {
+          url: analysisData.url,
+          tieneMetricsItems: !!analysisData.metrics?.performance?.items,
+          tieneAuditsOpportunities: !!analysisData.audits?.opportunities?.items,
+          tieneAuditsPassed: !!analysisData.audits?.passed?.items,
+          estructuraCompleta: JSON.stringify(analysisData, null, 2).substring(0, 500)
+        });
 
-        // Validar y limpiar datos antes de generar PDF
-        const datosLimpios = {
-          ...analysisData,
-          url: analysisData.url || 'URL no disponible',
-          strategy: analysisData.strategy || 'desktop',
-          strategyLabel: analysisData.strategyLabel || (analysisData.strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio'),
-          fecha: analysisData.fecha || new Date().toLocaleDateString('es-ES'),
-          categories: analysisData.categories || {},
-          metrics: analysisData.metrics || { performance: {} },
-          audits: analysisData.audits || { passed: {}, opportunities: {}, informational: {} },
-          diagnostics: analysisData.diagnostics || [],
-          recommendations: analysisData.recommendations || []
-        };
+        // 1️⃣ VALIDAR Y NORMALIZAR DATOS PARA PDF
+        const datosParaPDF = await prepararDatosParaPDF(analysisData);
 
-        const pdfBuffer = await generatePDF(datosLimpios, 'es');
+        console.log("✅ Datos normalizados para PDF:", {
+          metricsItems: datosParaPDF.metrics?.performance?.items?.length,
+          opportunities: datosParaPDF.audits?.opportunities?.items?.length,
+          passed: datosParaPDF.audits?.passed?.items?.length
+        });
 
-        // Configurar headers para descarga
+        // 2️⃣ GENERAR PDF CON DATOS NORMALIZADOS
+        const pdfBuffer = await generatePDF(datosParaPDF, 'es');
+
+        // 3️⃣ ENVIAR PDF
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="analisis-performance-${Date.now()}.pdf"`);
         res.setHeader('Content-Length', pdfBuffer.length);
@@ -3439,6 +3516,153 @@ function deduplicateDefinitions(definitionsContent) {
         });
       }
     });
+
+
+    // ========== FUNCIÓN AUXILIAR: PREPARAR DATOS PARA PDF ==========
+    async function prepararDatosParaPDF(analysisData) {
+      console.log("🔄 Preparando datos para PDF - Entrada:", {
+          tipo: typeof analysisData,
+          tieneLighthouse: !!analysisData.lighthouseResult,
+          tieneMetrics: !!analysisData.metrics,
+          tieneAudits: !!analysisData.audits,
+          entrada: JSON.stringify(analysisData).substring(0, 300)
+        });
+
+      // Si ya tiene la estructura correcta que espera generatePDF()
+        if (analysisData.metrics?.performance?.items &&
+            Array.isArray(analysisData.metrics.performance.items) &&
+            analysisData.audits?.opportunities?.items &&
+            Array.isArray(analysisData.audits.opportunities.items)) {
+
+          console.log("✅ Datos YA tienen estructura correcta para PDF");
+          return validarDatosParaPDF(analysisData);
+        }
+
+      // Si viene de PageSpeed Insights, reestructurar
+      const lighthouse = analysisData.lighthouseResult;
+      const loadingExp = analysisData.loadingExperience;
+
+      if (lighthouse) {
+        console.log("🔄 Reestructurando datos de Lighthouse para PDF");
+
+        // 1. CATEGORÍAS
+        const categories = {};
+        Object.entries(lighthouse.categories || {}).forEach(([key, cat]) => {
+          categories[key] = {
+            id: key,
+            title: translateText(cat.title),
+            score: Math.round((cat.score || 0) * 100),
+            description: translateText(cat.description || '')
+          };
+        });
+
+        // 2. MÉTRICAS (convertir auditorías con valores numéricos)
+        const metricItems = [];
+        Object.entries(lighthouse.audits || {}).forEach(([key, audit]) => {
+          if (audit.numericValue !== undefined || audit.displayValue) {
+            metricItems.push({
+              id: key,
+              title: translateText(audit.title),
+              description: translateText(audit.description || ''),
+              displayValue: audit.displayValue ? translateText(audit.displayValue) : '',
+              numericValue: audit.numericValue,
+              numericUnit: audit.numericUnit,
+              score: audit.score
+            });
+          }
+        });
+
+        // 3. AUDITORÍAS (oportunidades y aprobadas)
+        const auditOpportunities = [];
+        const auditPassed = [];
+
+        Object.entries(lighthouse.audits || {}).forEach(([key, audit]) => {
+          const auditObj = {
+            id: key,
+            title: translateText(audit.title),
+            description: translateText(audit.description || ''),
+            displayValue: audit.displayValue ? translateText(audit.displayValue) : '',
+            score: audit.score,
+            numericValue: audit.numericValue
+          };
+
+          if (audit.score !== null && audit.score < 0.9) {
+            auditOpportunities.push(auditObj);
+          } else if (audit.score !== null) {
+            auditPassed.push(auditObj);
+          }
+        });
+
+        // 4. DIAGNÓSTICOS (auditorías con score bajo)
+        const diagnostics = auditOpportunities
+          .filter(audit => audit.score < 0.9)
+          .map(audit => ({
+            ...audit,
+            severity: audit.score >= 0.5 ? 'MEDIA' : 'ALTA',
+            impact: 'ALTO'
+          }))
+          .slice(0, 10);
+
+        // 5. RECOMENDACIONES
+        const recommendations = generateCompleteSpanishRecommendations(lighthouse.audits, diagnostics);
+
+        // 6. EXPERIENCIA DE CARGA
+        let loadingExperience = null;
+        if (loadingExp) {
+          loadingExperience = {
+            overall_category: translateText(loadingExp.overall_category || 'DESCONOCIDO'),
+            metrics: {}
+          };
+
+          if (loadingExp.metrics) {
+            Object.entries(loadingExp.metrics).forEach(([key, metric]) => {
+              loadingExperience.metrics[key] = {
+                category: translateText(metric.category || 'DESCONOCIDO'),
+                percentile: metric.percentile
+              };
+            });
+          }
+        }
+
+        // 7. ESTRUCTURA FINAL
+        return {
+          url: analysisData.url || analysisData.analyzedUrl || 'URL no disponible',
+          strategy: analysisData.strategy || 'desktop',
+          strategyLabel: analysisData.strategyLabel ||
+                        (analysisData.strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio'),
+          fecha: analysisData.fecha || new Date().toLocaleDateString('es-ES'),
+
+          categories: categories,
+
+          metrics: {
+            performance: {
+              items: metricItems.slice(0, 20) // Limitar para PDF
+            }
+          },
+
+          audits: {
+            opportunities: {
+              items: auditOpportunities.slice(0, 15)
+            },
+            passed: {
+              items: auditPassed.slice(0, 15)
+            }
+          },
+
+          diagnostics: diagnostics,
+          recommendations: recommendations,
+          loadingExperience: loadingExperience,
+
+          summary: {
+            performanceScore: Math.round((lighthouse.categories?.performance?.score || 0) * 100)
+          }
+        };
+      }
+
+      // Si no es Lighthouse, usar los datos tal cual pero asegurar estructura
+      return validarDatosParaPDF(analysisData);
+    }
+
 
     // Exportar a CSV
     app.post("/api/export-csv", async (req, res) => {
@@ -3813,6 +4037,119 @@ function deduplicateDefinitions(definitionsContent) {
         },
         instructions: "Usa /api/test-pdf-data para probar el PDF con datos simulados"
       });
+    });
+
+    // En server.js, antes de app.listen
+    app.post("/api/debug-pdf-data", async (req, res) => {
+      try {
+        const { url } = req.body;
+
+        // Datos de prueba completos
+        const testData = {
+          url: url || "https://ejemplo.com",
+          strategy: "mobile",
+          strategyLabel: "📱 Móvil",
+          fecha: new Date().toLocaleDateString('es-ES'),
+
+          categories: {
+            performance: {
+              id: "performance",
+              title: "Rendimiento",
+              score: 75,
+              description: "Mide qué tan rápido carga tu página"
+            },
+            accessibility: {
+              id: "accessibility",
+              title: "Accesibilidad",
+              score: 85,
+              description: "Evalúa la accesibilidad del sitio"
+            }
+          },
+
+          metrics: {
+            performance: {
+              items: [
+                {
+                  id: "fcp",
+                  title: "Primer Pintado de Contenido",
+                  description: "Tiempo hasta el primer contenido visible",
+                  displayValue: "1.8 s",
+                  score: 0.9,
+                  numericValue: 1800,
+                  numericUnit: "ms"
+                },
+                {
+                  id: "lcp",
+                  title: "Pintado de Contenido Más Grande",
+                  description: "Tiempo hasta el elemento más grande",
+                  displayValue: "3.2 s",
+                  score: 0.7,
+                  numericValue: 3200,
+                  numericUnit: "ms"
+                }
+              ]
+            }
+          },
+
+          audits: {
+            opportunities: {
+              items: [
+                {
+                  id: "opportunity-1",
+                  title: "Optimizar imágenes",
+                  description: "Las imágenes pueden comprimirse más",
+                  displayValue: "Ahorro potencial: 1.5 s",
+                  score: 0.6
+                }
+              ]
+            },
+            passed: {
+              items: [
+                {
+                  id: "passed-1",
+                  title: "Uso de HTTPS",
+                  description: "El sitio usa HTTPS correctamente",
+                  displayValue: "✅",
+                  score: 1.0
+                }
+              ]
+            }
+          },
+
+          diagnostics: [
+            {
+              id: "diagnostic-1",
+              title: "JavaScript no utilizado",
+              description: "Se encontró 150 KB de JS no utilizado",
+              displayValue: "150 KB",
+              severity: "ALTA",
+              impact: "ALTO",
+              score: 0.4
+            }
+          ],
+
+          recommendations: [
+            {
+              priority: "ALTA",
+              title: "Comprimir imágenes",
+              description: "Usa formatos WebP para imágenes",
+              impact: "Alta reducción de tamaño",
+              action: "Convertir imágenes a WebP"
+            }
+          ]
+        };
+
+        // Generar PDF con datos de prueba
+        const pdfBuffer = await generatePDF(testData, 'es');
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Test_PDF_${Date.now()}.pdf"`);
+        res.send(pdfBuffer);
+
+      } catch (err) {
+        console.error("❌ Error en debug PDF:", err);
+        res.status(500).json({ error: err.message });
+      }
     });
 
     app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));

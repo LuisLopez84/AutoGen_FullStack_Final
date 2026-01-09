@@ -56,47 +56,64 @@ function cleanTextForPDF(text) {
 export function generatePDF(data, language = 'es') {
   return new Promise((resolve, reject) => {
     try {
-          // LOGGING DE DIAGNÓSTICO
-          console.log('🔍 DEBUG generatePDF - Datos recibidos:');
-          console.log('  URL:', data.url);
-          console.log('  Categorías:', Object.keys(data.categories || {}));
-          console.log('  Métricas items:', data.metrics?.performance?.items?.length || 0);
-          console.log('  Auditorías oportunidades:', data.audits?.opportunities?.items?.length || 0);
-          console.log('  Auditorías aprobadas:', data.audits?.passed?.items?.length || 0);
-          console.log('  Diagnósticos:', data.diagnostics?.length || 0);
-          console.log('  Recomendaciones:', data.recommendations?.length || 0);
+      // ========== VALIDACIÓN EXTRA SEGURA ==========
+      console.log('🔍 DEBUG generatePDF - Iniciando generación...');
 
-          // VALIDACIÓN DE DATOS MÍNIMOS
-          if (!data.categories || Object.keys(data.categories).length === 0) {
-            console.warn('⚠️  No hay categorías en los datos');
-          }
+      // Validación profunda de datos
+      if (!data) {
+        console.error('❌ No hay datos para generar PDF');
+        return reject(new Error('No hay datos para generar PDF'));
+      }
 
-          if (!data.metrics?.performance?.items || data.metrics.performance.items.length === 0) {
-            console.warn('⚠️  No hay métricas en los datos');
-          }
-      // VALIDACIÓN CRÍTICA: Asegurar que todos los datos existan
-      console.log('📊 Datos recibidos para PDF:', {
-        hasCategories: !!data.categories,
-        categoriesCount: Object.keys(data.categories || {}).length,
-        hasMetrics: !!data.metrics?.performance,
-        metricsCount: data.metrics?.performance?.items?.length || 0,
-        hasAudits: !!data.audits,
-        hasDiagnostics: !!data.diagnostics,
-        diagnosticsCount: data.diagnostics?.length || 0,
-        hasRecommendations: !!data.recommendations,
-        recommendationsCount: data.recommendations?.length || 0
-      });
-
-      // Asegurar estructura mínima
+      // Asegurar que todos los arrays existan
       const safeData = {
         ...data,
+        url: data.url || 'URL no especificada',
+        fecha: data.fecha || new Date().toLocaleDateString('es-ES'),
+
+        // Garantizar categorías
         categories: data.categories || {},
-        metrics: data.metrics || { performance: { items: [] } },
-        audits: data.audits || { passed: {}, opportunities: {}, informational: {} },
+
+        // Garantizar métricas con items array
+        metrics: {
+          performance: {
+            items: Array.isArray(data.metrics?.performance?.items)
+              ? data.metrics.performance.items
+              : []
+          }
+        },
+
+        // Garantizar auditorías con items array
+        audits: {
+          opportunities: {
+            items: Array.isArray(data.audits?.opportunities?.items)
+              ? data.audits.opportunities.items
+              : []
+          },
+          passed: {
+            items: Array.isArray(data.audits?.passed?.items)
+              ? data.audits.passed.items
+              : []
+          }
+        },
+
+        // Garantizar arrays
         diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
         recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+
+        // Experiencia de carga opcional
         loadingExperience: data.loadingExperience || null
       };
+
+      console.log('✅ Datos preparados para PDF:', {
+        url: safeData.url,
+        categories: Object.keys(safeData.categories).length,
+        metricsItems: safeData.metrics.performance.items.length,
+        opportunities: safeData.audits.opportunities.items.length,
+        passed: safeData.audits.passed.items.length,
+        diagnostics: safeData.diagnostics.length,
+        recommendations: safeData.recommendations.length
+      });
 
       // Continuar con safeData en lugar de data
       const doc = new PDFDocument({
