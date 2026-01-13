@@ -8,6 +8,7 @@ export default function PerformanceAnalyzerSpanish() {
   const [error, setError] = useState(null);
   const [modo, setModo] = useState("desktop");
   const [pestanaActiva, setPestanaActiva] = useState("resumen");
+  const [activeSection, setActiveSection] = useState('security'); // 'performance' o 'security'
 
 
 

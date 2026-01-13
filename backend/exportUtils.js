@@ -641,6 +641,108 @@ export function generatePDF(data, language = 'es') {
               });
             }
 
+// ========== NUEVAS FUNCIONES PARA ZAP SECURITY ==========
+const getRiskColor = (risk) => {
+  switch (risk.toLowerCase()) {
+    case 'high': return '#c0392b';
+    case 'medium': return '#e67e22';
+    case 'low': return '#f1c40f';
+    case 'informational': return '#3498db';
+    default: return '#95a5a6';
+  }
+};
+
+export function generateZapPDF(alerts, url) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const chunks = [];
+
+      doc.on('data', chunk => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      // Portada
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill('#2c3e50');
+      doc.fillColor('#ffffff').fontSize(32).text('🛡️ INFORME DE SEGURIDAD', 50, 200, { align: 'center' });
+      doc.fontSize(18).text('Análisis de Vulnerabilidades OWASP ZAP', 50, 250, { align: 'center' });
+      doc.fontSize(12).text(`Objetivo: ${url}`, 50, 300, { align: 'center' });
+      doc.text(`Fecha: ${new Date().toLocaleString('es-ES')}`, 50, 320, { align: 'center' });
+
+      // Página de Resumen
+      doc.addPage();
+      doc.fillColor('#2c3e50').fontSize(20).text('RESUMEN DE VULNERABILIDADES', 50, 50);
+
+      // Contar riesgos
+      const summary = { High: 0, Medium: 0, Low: 0, Informational: 0 };
+      alerts.forEach(a => { if (summary[a.risk] !== undefined) summary[a.risk]++; });
+
+      let yPos = 100;
+      Object.entries(summary).forEach(([risk, count]) => {
+        doc.rect(50, yPos, 400, 30).fill(getRiskColor(risk));
+        doc.fillColor('#ffffff').fontSize(12).text(`${risk.toUpperCase()}: ${count} alertas`, 60, yPos + 10);
+        yPos += 40;
+      });
+
+      // Detalles
+      doc.addPage();
+      doc.fillColor('#2c3e50').fontSize(20).text('DETALLE DE ALERTAS', 50, 50);
+      yPos = 80;
+
+      alerts.forEach((alert, i) => {
+        if (yPos > 700) { doc.addPage(); yPos = 50; }
+
+        doc.fillColor(getRiskColor(alert.risk)).fontSize(14).text(`${i + 1}. ${alert.name}`, 50, yPos);
+        yPos += 20;
+        doc.fillColor('#333333').fontSize(10).text(`Riesgo: ${alert.risk} | URL: ${alert.url}`, 50, yPos);
+        yPos += 15;
+        doc.text(`Descripción: ${alert.description.substring(0, 200)}...`, 50, yPos);
+        yPos += 15;
+        doc.fillColor('#2980b9').text(`Solución: ${alert.solution.substring(0, 200)}...`, 50, yPos);
+        yPos += 30;
+      });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+export function generateZapCSV(alerts) {
+  return new Promise((resolve, reject) => {
+    const csvWriter = createObjectCsvWriter({
+      path: `output/zap_report_${Date.now()}.csv`, // Asegúrate que la carpeta output exista
+      header: [
+        {id: 'name', title: 'NOMBRE'},
+        {id: 'risk', title: 'RIESGO'},
+        {id: 'confidence', title: 'CONFIANZA'},
+        {id: 'url', title: 'URL AFECTADA'},
+        {id: 'param', title: 'PARÁMETRO'},
+        {id: 'description', title: 'DESCRIPCIÓN'},
+        {id: 'solution', title: 'SOLUCIÓN'}
+      ]
+    });
+
+    csvWriter.writeRecords(alerts)
+      .then(() => {
+        // Leer el archivo y devolverlo como buffer
+        const fs = require('fs');
+        const path = require('path');
+        // Esto es simplificado, en producción idealmente devuelves el stream directamente
+        // Pero para este ejemplo asumiremos que guardas y lees o el CSVWriter soporta buffer
+        // Para simplificar la respuesta HTTP, devolveremos un string CSV simple
+        const header = ['NOMBRE,RIESGO,CONFIANZA,URL,DESCRIPCIÓN,SOLUCIÓN'];
+        const rows = alerts.map(a =>
+          `"${a.name}","${a.risk}","${a.confidence}","${a.url}","${a.description.replace(/"/g, '""')}","${a.solution.replace(/"/g, '""')}"`
+        );
+        resolve(Buffer.from([...header, ...rows].join('\n')));
+      })
+      .catch(reject);
+  });
+}
+
+
   // ========== FUNCIONES AUXILIARES PARA PDF ==========
 
   function addSectionHeader(doc, title) {

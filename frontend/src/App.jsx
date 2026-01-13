@@ -5,6 +5,7 @@ import TransformPanel from "./components/TransformPanel.jsx";
 import RecorderPanel from "./components/RecorderPanel.jsx";
 import PerformanceAnalyzerSpanish from "./components/PerformanceAnalyzerSpanish.jsx"; // <-- NUEVO IMPORT
 import "./App.css";
+import SecurityScanner from './components/SecurityScanner';
 
 const BACKEND = import.meta.env.VITE_BACKEND_BASE || "http://localhost:3000";
 
@@ -47,6 +48,11 @@ export default function App(){
           >
             ⚡ Performance
           </button>
+
+           {/* AQUÍ AGREGAMOS LA NUEVA PESTAÑA SEGURITY */}
+              <button className={activeTab === 'security' ? 'active' : ''} onClick={() => setActiveTab('security')}>
+                  🛡️ Security
+              </button>
         </nav>
 
         <div className="content">
@@ -55,6 +61,7 @@ export default function App(){
             {activeTab === "recorder" && <RecorderPanel backend={BACKEND} />}
             {activeTab === "upload" && <RecordingUploader onLoad={r => setRecording(r)} />}
             {activeTab === "performance" && <PerformanceAnalyzerSpanish />} {/* NUEVO COMPONENTE */}
+            {activeTab === 'security' && (<SecurityScanner />)}
           </div>
 
           <aside className="sidebar">
