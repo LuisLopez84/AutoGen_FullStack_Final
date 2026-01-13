@@ -22,6 +22,7 @@ import { chromium } from "playwright";
 import { buildDynamicPrompt, buildTransformPrompt } from "./prompts/generateProjectPrompts.js";
 import dotenv from 'dotenv';
 
+
 // Cargar .env inmediatamente
 const envPath = path.join(__dirname, '.env');
 console.log("🌍 Cargando variables de entorno...");
@@ -4746,31 +4747,33 @@ app.post('/api/zap/scan', async (req, res) => {
   }
 });
 
-// Ruta para exportar PDF
+// Ruta para exportar ZAP PDF
 app.post('/api/zap/export/pdf', async (req, res) => {
   try {
     const { alerts, url } = req.body;
+    if (!alerts) return res.status(400).send('Faltan datos');
     const pdfBuffer = await generateZapPDF(alerts, url);
-
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=zap_scan_${Date.now()}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename="zap_security_${Date.now()}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    res.status(500).json({ error: 'Error generando PDF' });
+    console.error('Error ZAP PDF:', error);
+    res.status(500).send('Error generando PDF de seguridad');
   }
 });
 
-// Ruta para exportar CSV
+// Ruta para exportar ZAP CSV
 app.post('/api/zap/export/csv', async (req, res) => {
   try {
     const { alerts } = req.body;
+    if (!alerts) return res.status(400).send('Faltan datos');
     const csvBuffer = await generateZapCSV(alerts);
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=zap_scan_${Date.now()}.csv`);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="zap_security_${Date.now()}.csv"`);
     res.send(csvBuffer);
   } catch (error) {
-    res.status(500).json({ error: 'Error generando CSV' });
+    console.error('Error ZAP CSV:', error);
+    res.status(500).send('Error generando CSV de seguridad');
   }
 });
 
