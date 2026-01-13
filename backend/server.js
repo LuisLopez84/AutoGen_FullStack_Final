@@ -5,11 +5,11 @@ const __dirname = path.dirname(__filename);
 
 
 import { ZapService } from './zapService.js'; // Importar la clase
-import { generateZapPDF, generateZapCSV } from './exportUtils.js'; // Importar utilidades
+import { generateZapPDF, generateZapCSV, generatePDF, generateCSV } from './exportUtils.js'; // Importar utilidades
 import { normalizePageSpeed } from './pagespeed/normalizePageSpeed.js';
 import { translateToSpanish } from './pagespeed/translateToSpanish.js';
 import { AUDIT_TRANSLATIONS } from './pagespeed/auditTranslations.js';
-import { generatePDF, generateCSV } from './exportUtils.js';
+//import { generatePDF, generateCSV } from './exportUtils.js';
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
