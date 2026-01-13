@@ -17,10 +17,25 @@ function getQualityLabel(score) {
   return 'Pobre';
 }
 
+// Función de limpieza mejorada para PDF
 function cleanTextForPDF(text) {
   if (!text) return '';
-  // Limpieza básica de caracteres raros
-  return text.toString().replace(/[\u{0080}-\u{FFFF}]/gu, '');
+
+  let str = String(text);
+
+  // 1. Eliminar caracteres basura específicos de tus traducciones
+  str = str.replace(/Ø=Ü/g, '');
+  str = str.replace(/Ø=Üñ/g, '');
+  str = str.replace(/Ø=ÜÊ/g, '');
+  str = str.replace(/Ø=Ü¡/g, '');
+  str = str.replace(/Ø=Üë/g, '');
+  str = str.replace(/&¡/g, ''); // Eliminar combinaciones problemáticas
+
+  // 2. Reemplazar caracteres no estándar que rompen PDFKit (pero mantener acentos básicos)
+  // Permitimos ASCII (20-7E) y Latín-1 Extendido (C0-FF) para español (á, é, ñ, ¿)
+  str = str.replace(/[^\x20-\x7E\u00C0-\u00FF]/g, ' ');
+
+  return str;
 }
 
 // ==========================================
@@ -39,8 +54,8 @@ export function generateZapPDF(alerts, url) {
 
       // --- PORTADA ---
       doc.rect(0, 0, doc.page.width, doc.page.height).fill('#2c3e50');
-      doc.fillColor('#ffffff').fontSize(32).text('🛡️ INFORME DE SEGURIDAD', 50, 200, { align: 'center' });
-      doc.fontSize(18).text('Análisis OWASP ZAP', 50, 250, { align: 'center' });
+      doc.fillColor('#ffffff').fontSize(32).text('INFORME DE SEGURIDAD', 50, 200, { align: 'center' });
+      doc.fontSize(18).text('Analisis OWASP ZAP', 50, 250, { align: 'center' });
       doc.fontSize(12).fillColor('#bdc3c7').text(`Objetivo: ${url}`, 50, 300, { align: 'center' });
       doc.text(`Fecha: ${new Date().toLocaleString('es-ES')}`, 50, 320, { align: 'center' });
 
@@ -79,16 +94,16 @@ export function generateZapPDF(alerts, url) {
         // Caja de la alerta
         doc.rect(50, yPos, doc.page.width - 100, 80).lineWidth(1).stroke(color);
 
-        doc.fillColor(color).fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${alert.name}`, 60, yPos + 5);
+        doc.fillColor(color).fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${cleanTextForPDF(alert.name)}`, 60, yPos + 5);
         doc.fillColor('#333').fontSize(10).font('Helvetica')
            .text(`URL: ${alert.url}`, 60, yPos + 20, { width: doc.page.width - 120, ellipsis: true });
 
         if (alert.description) {
-            doc.text(`Descripción: ${cleanTextForPDF(alert.description).substring(0, 150)}...`, 60, yPos + 35, { width: doc.page.width - 120 });
+            doc.text(`Desc: ${cleanTextForPDF(alert.description).substring(0, 150)}...`, 60, yPos + 35, { width: doc.page.width - 120 });
         }
 
         if (alert.solution) {
-            doc.fillColor('#2980b9').text(`Solución: ${cleanTextForPDF(alert.solution).substring(0, 100)}...`, 60, yPos + 50, { width: doc.page.width - 120 });
+            doc.fillColor('#2980b9').text(`Sol: ${cleanTextForPDF(alert.solution).substring(0, 100)}...`, 60, yPos + 50, { width: doc.page.width - 120 });
         }
 
         yPos += 90;
@@ -96,6 +111,7 @@ export function generateZapPDF(alerts, url) {
 
       doc.end();
     } catch (error) {
+      console.error('Error ZAP PDF:', error);
       reject(error);
     }
   });
@@ -104,11 +120,9 @@ export function generateZapPDF(alerts, url) {
 export function generateZapCSV(alerts) {
   return new Promise((resolve, reject) => {
     try {
-      // Generamos el CSV manualmente en memoria para evitar errores de escritura en disco
       const header = ['RIESGO', 'NOMBRE', 'CONFIDENZA', 'URL', 'DESCRIPCION', 'SOLUCION'];
 
       const rows = alerts.map(alert => {
-        // Escapar comillas dobles para formato CSV válido
         const escape = (txt) => {
             if (!txt) return '""';
             return `"${String(txt).replace(/"/g, '""')}"`;
@@ -150,15 +164,15 @@ export function generatePDF(data) {
 
       // --- PORTADA ---
       doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ecf0f1');
-      doc.fillColor('#2c3e50').fontSize(36).text('⚡ Informe Rendimiento', 50, 150, { align: 'center' });
-      doc.fontSize(24).fillColor('#3498db').text('Análisis Web Performance', 50, 200, { align: 'center' });
+      doc.fillColor('#2c3e50').fontSize(36).text('INFORME RENDIMIENTO', 50, 150, { align: 'center' });
+      doc.fontSize(24).fillColor('#3498db').text('Analisis Web Performance', 50, 200, { align: 'center' });
       doc.fontSize(14).fillColor('#7f8c8d').text(`URL: ${data.url || 'N/A'}`, 50, 300, { align: 'center' });
-      doc.text(`Estrategia: ${data.strategy === 'mobile' ? 'Móvil' : 'Escritorio'}`, 50, 320, { align: 'center' });
+      doc.text(`Estrategia: ${data.strategy === 'mobile' ? 'Movil' : 'Escritorio'}`, 50, 320, { align: 'center' });
       doc.text(`Fecha: ${new Date().toLocaleString('es-ES')}`, 50, 340, { align: 'center' });
 
       // --- PÁGINA 1: RESUMEN ---
       doc.addPage();
-      doc.fillColor('#2c3e50').fontSize(24).text('📊 Resumen Ejecutivo', 50, 50);
+      doc.fillColor('#2c3e50').fontSize(24).text('RESUMEN EJECUTIVO', 50, 50);
 
       let y = 100;
 
@@ -171,15 +185,16 @@ export function generatePDF(data) {
           const width = (cat.score / 100) * 400;
           doc.rect(50, y, width, 20).fill(getScoreColor(cat.score));
 
-          // Texto
-          doc.fillColor('#2c3e50').fontSize(12).text(`${cleanTextForPDF(cat.title)}: ${Math.round(cat.score)}/100`, 50, y - 15);
+          // Texto (con limpieza)
+          const titleClean = cleanTextForPDF(cat.title);
+          doc.fillColor('#2c3e50').fontSize(12).text(`${titleClean}: ${Math.round(cat.score)}/100`, 50, y - 15);
           y += 50;
         });
       }
 
       // --- PÁGINA 2: MÉTRICAS CORE ---
       doc.addPage();
-      doc.fillColor('#2c3e50').fontSize(24).text('📈 Métricas Principales (Core Web Vitals)', 50, 50);
+      doc.fillColor('#2c3e50').fontSize(24).text('METRICAS PRINCIPALES', 50, 50);
 
       y = 100;
       const coreMetrics = ['largest-contentful-paint', 'cumulative-layout-shift', 'total-blocking-time', 'first-contentful-paint'];
@@ -191,8 +206,11 @@ export function generatePDF(data) {
             // Fila de métrica
             doc.rect(50, y - 10, doc.page.width - 100, 60).fill('#fff').stroke('#ddd');
 
-            doc.fillColor('#2c3e50').fontSize(12).font('Helvetica-Bold').text(cleanTextForPDF(m.title), 60, y);
-            doc.fillColor('#7f8c8d').fontSize(10).text(cleanTextForPDF(m.description), 60, y + 20, { width: 300 });
+            const titleClean = cleanTextForPDF(m.title);
+            const descClean = cleanTextForPDF(m.description);
+
+            doc.fillColor('#2c3e50').fontSize(12).font('Helvetica-Bold').text(titleClean, 60, y);
+            doc.fillColor('#7f8c8d').fontSize(10).text(descClean, 60, y + 20, { width: 300 });
 
             // Valor numérico
             const displayValue = m.displayValue || 'N/A';
@@ -207,40 +225,44 @@ export function generatePDF(data) {
 
       // --- PÁGINA 3: OPORTUNIDADES DE MEJORA ---
       doc.addPage();
-      doc.fillColor('#c0392b').fontSize(24).text('🔴 Oportunidades de Mejora', 50, 50);
+      doc.fillColor('#c0392b').fontSize(24).text('OPORTUNIDADES DE MEJORA', 50, 50);
 
       y = 100;
       const opportunities = data.audits?.opportunities?.items || [];
 
       if (opportunities.length === 0) {
-        doc.fillColor('#27ae60').text('✅ No se encontraron oportunidades críticas.', 50, 100);
+        doc.fillColor('#27ae60').text('No se encontraron oportunidades criticas.', 50, 100);
       } else {
         opportunities.slice(0, 10).forEach(audit => {
           if (y > 700) { doc.addPage(); y = 50; }
 
-          doc.rect(50, y - 5, doc.page.width - 100, 5).fill('#c0392b'); // Barra roja superior
-          doc.fillColor('#2c3e50').fontSize(11).font('Helvetica-Bold').text(cleanTextForPDF(audit.title), 50, y + 5);
+          doc.rect(50, y - 5, doc.page.width - 100, 5).fill('#c0392b');
+
+          const titleClean = cleanTextForPDF(audit.title);
+          const descClean = cleanTextForPDF(audit.description);
+
+          doc.fillColor('#2c3e50').fontSize(11).font('Helvetica-Bold').text(titleClean, 50, y + 5);
 
           if (audit.displayValue) {
              doc.fillColor('#c0392b').fontSize(10).text(`Ahorro: ${audit.displayValue}`, 400, y + 5);
           }
 
-          doc.fillColor('#555').fontSize(9).text(cleanTextForPDF(audit.description), 50, y + 25, { width: doc.page.width - 120 });
+          doc.fillColor('#555').fontSize(9).text(descClean, 50, y + 25, { width: doc.page.width - 120 });
           y += 60;
         });
       }
 
       // --- PÁGINA 4: AUDITORÍAS APROBADAS ---
       doc.addPage();
-      doc.fillColor('#27ae60').fontSize(24).text('✅ Auditorías Aprobadas', 50, 50);
+      doc.fillColor('#27ae60').fontSize(24).text('AUDITORIAS APROBADAS', 50, 50);
 
       y = 100;
       const passed = data.audits?.passed?.items || [];
 
-      // Tabla simple para passed audits
       passed.slice(0, 20).forEach(audit => {
         if (y > 750) { doc.addPage(); y = 50; }
-        doc.fontSize(9).fillColor('#2c3e50').text(`• ${cleanTextForPDF(audit.title)}`, 50, y);
+        const titleClean = cleanTextForPDF(audit.title);
+        doc.fontSize(9).fillColor('#2c3e50').text(`- ${titleClean}`, 50, y);
         y += 15;
       });
 
@@ -248,6 +270,178 @@ export function generatePDF(data) {
 
     } catch (error) {
       console.error('Error generando PDF:', error);
+      reject(error);
+    }
+  });
+}
+
+// ==========================================
+// FUNCIÓN GENERAR CSV PAGESPEED (RESTAURADA)
+// ==========================================
+export function generateCSV(data) {
+  return new Promise((resolve, reject) => {
+    try {
+      const csvData = [];
+
+      // 1. METADATOS DEL ANÁLISIS
+      csvData.push(['SECCIÓN', 'CAMPO', 'VALOR', 'UNIDAD', 'PUNTUACIÓN', 'ESTADO']);
+      csvData.push(['INFORMACIÓN GENERAL', 'URL', data.url || '', '', '', '']);
+      csvData.push(['INFORMACIÓN GENERAL', 'Dispositivo', data.strategyLabel || data.strategy || '', '', '', '']);
+      csvData.push(['INFORMACIÓN GENERAL', 'Fecha', new Date().toLocaleDateString('es-ES'), '', '', '']);
+      csvData.push([]);
+
+      // 2. CATEGORÍAS COMPLETAS
+      csvData.push(['CATEGORÍAS', 'Nombre', 'Puntuación', 'Estado', 'Descripción', 'Prioridad']);
+      if (data.categories) {
+        Object.values(data.categories).forEach(cat => {
+          const estado = cat.score >= 90 ? 'EXCELENTE' :
+                        cat.score >= 70 ? 'BUENO' :
+                        cat.score >= 50 ? 'REGULAR' : 'MEJORABLE';
+
+          const cleanTitle = cleanTextForPDF(cat.title);
+          const cleanDesc = cleanTextForPDF(cat.description);
+
+          csvData.push(['CATEGORÍAS', cleanTitle, cat.score, estado, cleanDesc, 'ALTA']);
+        });
+      }
+      csvData.push([]);
+
+      // 3. TODAS LAS MÉTRICAS
+      csvData.push(['MÉTRICAS', 'Nombre', 'Valor', 'Unidad', 'Score', 'Estado']);
+
+      if (data.metrics?.performance) {
+        const metricsItems = Array.isArray(data.metrics?.performance?.items)
+          ? data.metrics.performance.items
+          : Object.values(data.metrics?.performance || {});
+
+        metricsItems.forEach(metric => {
+          const estado =
+            metric.score >= 0.9 ? 'EXCELENTE' :
+            metric.score >= 0.5 ? 'BUENO' :
+            'MEJORABLE';
+
+          const cleanTitle = cleanTextForPDF(metric.title);
+
+          csvData.push([
+            'MÉTRICAS',
+            cleanTitle,
+            metric.numericValue || '',
+            metric.numericUnit || '',
+            metric.score != null ? Math.round(metric.score * 100) : '',
+            estado
+          ]);
+        });
+      }
+
+      csvData.push([]);
+
+      // 4. AUDITORÍAS DETALLADAS
+      csvData.push(['AUDITORÍAS', 'Tipo', 'Título', 'Descripción', 'Ahorro', 'Score', 'Severidad']);
+
+      // Oportunidades
+      if (data.audits?.opportunities) {
+        const opportunityItems = Array.isArray(data.audits?.opportunities?.items)
+          ? data.audits.opportunities.items
+          : Object.values(data.audits?.opportunities || {});
+
+        opportunityItems.forEach(audit => {
+          const cleanTitle = cleanTextForPDF(audit.title);
+          const cleanDesc = cleanTextForPDF(audit.description);
+
+          csvData.push([
+            'AUDITORÍAS',
+            'OPORTUNIDAD',
+            cleanTitle,
+            cleanDesc?.substring(0, 200) || '',
+            audit.displayValue || '',
+            audit.score ? Math.round(audit.score * 100) : '',
+            'ALTA'
+          ]);
+        });
+      }
+
+      // Aprobadas
+      if (data.audits?.passed) {
+        const passedItems = Array.isArray(data.audits?.passed?.items)
+          ? data.audits.passed.items
+          : Object.values(data.audits?.passed || {});
+
+        passedItems.forEach(audit => {
+           const cleanTitle = cleanTextForPDF(audit.title);
+
+          csvData.push([
+            'AUDITORÍAS',
+            'APROBADA',
+            cleanTitle,
+            cleanTextForPDF(audit.description)?.substring(0, 200) || '',
+            '',
+            audit.score ? Math.round(audit.score * 100) : '',
+            'BAJA'
+          ]);
+        });
+      }
+      csvData.push([]);
+
+     // 5. DIAGNÓSTICOS COMPLETOS
+     csvData.push(['DIAGNÓSTICOS', 'ID', 'Título', 'Descripción', 'Valor', 'Severidad', 'Impacto', 'Score']);
+
+     const diagnostics = Array.isArray(data.diagnostics)
+       ? data.diagnostics
+       : Object.values(data.diagnostics || {});
+
+     diagnostics.forEach(diag => {
+       const cleanTitle = cleanTextForPDF(diag.title);
+       const cleanDesc = cleanTextForPDF(diag.description);
+
+       csvData.push([
+         'DIAGNÓSTICOS',
+         diag.id || 'N/A',
+         cleanTitle,
+         cleanDesc.substring(0, 200).replace(/"/g, '""'),
+         diag.displayValue || 'N/A',
+         diag.severity || 'MEDIA',
+         diag.impact || 'ALTO',
+         diag.score !== undefined ? Math.round(diag.score * 100) : 'N/A'
+       ]);
+     });
+
+     csvData.push([]);
+
+      // 6. RECOMENDACIONES COMPLETAS
+      csvData.push(['RECOMENDACIONES', 'Prioridad', 'Título', 'Descripción', 'Impacto', 'Acción', 'AuditID', 'Ahorro Estimado']);
+
+      const recommendations = Array.isArray(data.recommendations)
+        ? data.recommendations
+        : Object.values(data.recommendations || {});
+
+      recommendations.forEach(rec => {
+        const cleanTitle = cleanTextForPDF(rec.title);
+        const cleanDesc = cleanTextForPDF(rec.description);
+
+        csvData.push([
+          'RECOMENDACIONES',
+          rec.priority || 'MEDIA',
+          cleanTitle,
+          cleanDesc.substring(0, 150).replace(/"/g, '""'),
+          rec.impact || '',
+          rec.action || '',
+          rec.auditId || '',
+          rec.estimatedSavings || ''
+        ]);
+      });
+
+      csvData.push([]);
+
+      // Convertir a string CSV
+      const csvContent = csvData.map(row =>
+        row.map(cell => {
+          const cellStr = String(cell || '');
+          return `"${cellStr.replace(/"/g, '""')}"`;
+        }).join(',')
+      ).join('\n');
+
+      resolve(csvContent);
+    } catch (error) {
       reject(error);
     }
   });
