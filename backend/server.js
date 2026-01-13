@@ -5,7 +5,7 @@ const __dirname = path.dirname(__filename);
 
 
 import { ZapService } from './zapService.js'; // Importar la clase
-import { generateZapPDF, generateZapCSV, generatePDF, generateCSV } from './exportUtils.js'; // Importar utilidades
+import { generateZapPDF, generateZapCSV, generatePDF } from './exportUtils.js'; // Importar utilidades
 import { normalizePageSpeed } from './pagespeed/normalizePageSpeed.js';
 import { translateToSpanish } from './pagespeed/translateToSpanish.js';
 import { AUDIT_TRANSLATIONS } from './pagespeed/auditTranslations.js';
