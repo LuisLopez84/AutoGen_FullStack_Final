@@ -41,16 +41,24 @@ function cleanTextForPDF(text) {
 // ==========================================
 // EXPORTACIONES ZAP (SEGURIDAD)
 // ==========================================
-
 export function generateZapPDF(alerts, url) {
   return new Promise((resolve, reject) => {
     try {
+      console.log('🛠️ (PDFKit) Creando documento...');
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
       const chunks = [];
 
       doc.on('data', chunk => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
+      doc.on('end', () => {
+        console.log('✅ (PDFKit) Stream finalizado.');
+        resolve(Buffer.concat(chunks));
+      });
+
+      // Capturar errores de PDFKit
+      doc.on('error', (err) => {
+        console.error('❌ (PDFKit) Error interno:', err);
+        reject(err);
+      });
 
       // --- PORTADA ---
       doc.rect(0, 0, doc.page.width, doc.page.height).fill('#2c3e50');
@@ -64,7 +72,13 @@ export function generateZapPDF(alerts, url) {
       doc.fillColor('#2c3e50').fontSize(20).text('RESUMEN DE RIESGOS', 50, 50);
 
       const summary = { High: 0, Medium: 0, Low: 0, Informational: 0 };
-      alerts.forEach(a => { if (summary[a.risk] !== undefined) summary[a.risk]++; });
+
+      // Conteo seguro
+      alerts.forEach(a => {
+        if (a && a.risk && summary[a.risk] !== undefined) {
+          summary[a.risk]++;
+        }
+      });
 
       let yPos = 100;
       const risks = [
@@ -81,41 +95,65 @@ export function generateZapPDF(alerts, url) {
         yPos += 50;
       });
 
-      // --- PÁGINA 2: DETALLES ---
+      // --- PÁGINA 2: DETALLES (CON BUCLE SEGURO) ---
       doc.addPage();
       doc.fillColor('#2c3e50').fontSize(20).text('DETALLE DE VULNERABILIDADES', 50, 50);
       yPos = 80;
 
+      // Recorremos las alertas con try/catch individual para que una mala no rompa el PDF
       alerts.forEach((alert, index) => {
-        if (yPos > 700) { doc.addPage(); yPos = 50; }
+        try {
+          if (yPos > 700) { doc.addPage(); yPos = 50; }
 
-        const color = alert.risk === 'High' ? '#c0392b' : alert.risk === 'Medium' ? '#e67e22' : alert.risk === 'Low' ? '#f1c40f' : '#3498db';
+          // Validar datos de la alerta
+          if (!alert) return;
 
-        // Caja de la alerta
-        doc.rect(50, yPos, doc.page.width - 100, 80).lineWidth(1).stroke(color);
+          const risk = alert.risk || 'Unknown';
+          const color = risk === 'High' ? '#c0392b' :
+                       risk === 'Medium' ? '#e67e22' :
+                       risk === 'Low' ? '#f1c40f' : '#3498db';
 
-        doc.fillColor(color).fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${cleanTextForPDF(alert.name)}`, 60, yPos + 5);
-        doc.fillColor('#333').fontSize(10).font('Helvetica')
-           .text(`URL: ${alert.url}`, 60, yPos + 20, { width: doc.page.width - 120, ellipsis: true });
+          // Caja de la alerta
+          doc.rect(50, yPos, doc.page.width - 100, 80).lineWidth(1).stroke(color);
 
-        if (alert.description) {
-            doc.text(`Desc: ${cleanTextForPDF(alert.description).substring(0, 150)}...`, 60, yPos + 35, { width: doc.page.width - 120 });
+          // Nombre
+          const name = cleanTextForPDF(alert.name || 'Sin nombre');
+          doc.fillColor(color).fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${name}`, 60, yPos + 5);
+
+          // URL
+          const urlAlert = alert.url || 'N/A';
+          doc.fillColor('#333').fontSize(10).font('Helvetica')
+             .text(`URL: ${urlAlert}`, 60, yPos + 20, { width: doc.page.width - 120, ellipsis: true });
+
+          // Descripción (Limpieza doble por seguridad)
+          if (alert.description) {
+              const desc = cleanTextForPDF(String(alert.description)).substring(0, 150);
+              doc.text(`Desc: ${desc}...`, 60, yPos + 35, { width: doc.page.width - 120 });
+          }
+
+          // Solución
+          if (alert.solution) {
+              const sol = cleanTextForPDF(String(alert.solution)).substring(0, 100);
+              doc.fillColor('#2980b9').text(`Sol: ${sol}...`, 60, yPos + 50, { width: doc.page.width - 120 });
+          }
+
+          yPos += 90;
+        } catch (e) {
+          console.error(`⚠️ Error dibujando alerta ${index}, saltando...`, e.message);
+          // No hacemos reject, solo saltamos esta alerta
         }
-
-        if (alert.solution) {
-            doc.fillColor('#2980b9').text(`Sol: ${cleanTextForPDF(alert.solution).substring(0, 100)}...`, 60, yPos + 50, { width: doc.page.width - 120 });
-        }
-
-        yPos += 90;
       });
 
       doc.end();
     } catch (error) {
-      console.error('Error ZAP PDF:', error);
+      console.error('❌ Error critico en generateZapPDF:', error);
       reject(error);
     }
   });
 }
+
+
+
 
 export function generateZapCSV(alerts) {
   return new Promise((resolve, reject) => {
