@@ -4172,15 +4172,31 @@ function deduplicateDefinitions(definitionsContent) {
 
         // 2. Esperar a que termine el Spider (simplificado para este ejemplo)
         let status = await ZapService.getScanStatus(scanId);
+        // Cambio: Reducimos tiempo de espera de 2000ms a 500ms para mayor velocidad
+        // Cambio: Aumentamos log frecuencia para ver progreso real
+        let checks = 0;
         while(status.progress < 100) {
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 500));
             status = await ZapService.getScanStatus(scanId);
-            console.log(`Spider Status: ${status.progress}%`);
+            checks++;
+
+            // Logueamos solo cada 5 segundos (cada 10 checks) para no saturar consola
+            if (checks % 10 === 0) {
+                console.log(`Active Scan Status: ${status.progress}%`);
+            }
         }
 
         // 3. Iniciar Active Scan
         console.log('Spider terminado. Iniciando Active Scan...');
-        const activeScanId = await ZapService.startActiveScan(url);
+        // Ajuste 1: Política de Escaneo "Standard" (Más rápido que "Default")
+        // Ajuste 2: Sin recursividad (evita bucles infinitos en links de paginación)
+        // Ajuste 3: Límite de hijos por nodo (Evita escanear la página entera por cada link)
+        const activeScanId = await ZapService.startActiveScan(url, {
+            scanPolicy: 'Standard', // Default vs Standard vs Insane (Standard es el balance ideal)
+            recurse: false,          // ¡CRUCIAL! No seguir links recursivamente
+            maxChildren: 10,         // Límite de hijos por nodo para reducir carga
+            maxDuration: 300         // 5 minutos máximo por escaneo (en segundos)
+        });
 
         // 4. Polling Active Scan
         status = await ZapService.getScanStatus(activeScanId);
