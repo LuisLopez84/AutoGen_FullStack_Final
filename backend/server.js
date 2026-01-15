@@ -4777,24 +4777,32 @@ app.post('/api/zap/export/csv', async (req, res) => {
 
 
 // ==========================================
-// ENDPOINTS DE EXPORTACIÓN ZAP (SEGURIDAD)
+// ENDPOINTS DE EXPORTACIÓN ZAP (CORREGIDOS)
 // ==========================================
-
-// Endpoint para descargar el PDF de ZAP
 app.post("/api/zap/pdf", async (req, res) => {
   try {
-    console.log("📄 Generando PDF de ZAP...");
-    const { alerts, url } = req.body;
+    console.log("🔍 [DEBUG] Petición recibida en /api/zap/pdf");
+    console.log("📦 [DEBUG] Cuerpo de la petición (Body):", JSON.stringify(req.body).substring(0, 200) + "...");
 
-    // Validación básica
-    if (!alerts || !Array.isArray(alerts)) {
-      return res.status(400).json({ error: "No se proporcionaron datos de alertas válidos" });
+    // Extracción inteligente de datos
+    // Intenta buscar la propiedad 'alerts', si no encuentra 'data', si no, usa todo el body si es un array.
+    let alerts = req.body.alerts || req.body.data || req.body;
+    const url = req.body.url || req.body.analyzedUrl || 'Objetivo Desconocido';
+
+    // Si no es array, intentar parsear string u otras estructuras
+    if (!Array.isArray(alerts)) {
+      console.error("⚠️ [DEBUG] 'alerts' no es un array. Tipo:", typeof alerts);
+      return res.status(400).json({
+        error: "Formato de datos inválido. Se esperaba un array de alertas."
+      });
     }
 
-    // Llamada a la función corregida
+    console.log(`✅ [DEBUG] Procesando ${alerts.length} alertas para PDF...`);
+
+    // Generar PDF
     const pdfBuffer = await generateZapPDF(alerts, url);
 
-    // Envío del buffer como descarga
+    // Enviar respuesta
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'attachment; filename="security_scan_report.pdf"',
@@ -4802,23 +4810,32 @@ app.post("/api/zap/pdf", async (req, res) => {
     });
 
     res.send(pdfBuffer);
-    console.log("✅ PDF generado y enviado.");
+    console.log("📤 PDF enviado exitosamente.");
 
   } catch (error) {
-    console.error("❌ Error generando PDF ZAP:", error);
-    res.status(500).json({ error: "Error interno generando el PDF", details: error.message });
+    console.error("❌ Error grave en endpoint /api/zap/pdf:", error);
+    res.status(500).json({
+      error: "Error interno del servidor generando el PDF",
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
-// Endpoint para descargar el CSV de ZAP
 app.post("/api/zap/csv", async (req, res) => {
   try {
-    console.log("📊 Generando CSV de ZAP...");
-    const { alerts } = req.body;
+    console.log("🔍 [DEBUG] Petición recibida en /api/zap/csv");
 
-    if (!alerts || !Array.isArray(alerts)) {
-      return res.status(400).json({ error: "No se proporcionaron datos de alertas válidos" });
+    // Extracción inteligente
+    let alerts = req.body.alerts || req.body.data || req.body;
+
+    if (!Array.isArray(alerts)) {
+       return res.status(400).json({
+        error: "Formato de datos inválido. Se esperaba un array de alertas."
+      });
     }
+
+    console.log(`✅ [DEBUG] Procesando ${alerts.length} alertas para CSV...`);
 
     const csvBuffer = await generateZapCSV(alerts);
 
@@ -4829,11 +4846,14 @@ app.post("/api/zap/csv", async (req, res) => {
     });
 
     res.send(csvBuffer);
-    console.log("✅ CSV generado y enviado.");
+    console.log("📤 CSV enviado exitosamente.");
 
   } catch (error) {
-    console.error("❌ Error generando CSV ZAP:", error);
-    res.status(500).json({ error: "Error interno generando el CSV", details: error.message });
+    console.error("❌ Error grave en endpoint /api/zap/csv:", error);
+    res.status(500).json({
+      error: "Error interno del servidor generando el CSV",
+      details: error.message
+    });
   }
 });
 
