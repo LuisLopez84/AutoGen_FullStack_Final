@@ -45,13 +45,16 @@ export class ZapService {
 
   static async startActiveScan(targetUrl) {
     try {
-      console.log('⚡ Iniciando Active Scan RÁPIDO...');
-      // CAMBIO: scanPolicy=Standard, recurse=false
-      const response = await axios.get(getZapUrl(`/ascan/action/scan/?url=${encodeURIComponent(targetUrl)}&recurse=false&scanPolicy=Standard&maxDuration=300`));
+      console.log('⚡ Iniciando Active Scan...');
+
+      const url = this.buildUrl(`/ascan/action/scan/?url=${encodeURIComponent(targetUrl)}&recurse=true`);
+      const response = await axios.get(url, { timeout: 60000 }); // 60 segundos timeout
+
+      console.log(`✅ Active Scan iniciado. ID: ${response.data.scan}`);
       return response.data.scan;
     } catch (error) {
-      console.error('Error iniciando Active Scan:', error.message);
-      throw new Error('No se pudo iniciar el escaneo activo');
+      console.error('❌ Error iniciando Active Scan:', error.message);
+      throw new Error(`No se pudo iniciar Active Scan: ${error.message}`);
     }
   }
 

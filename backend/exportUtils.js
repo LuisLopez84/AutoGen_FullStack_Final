@@ -1,114 +1,705 @@
 import PDFDocument from 'pdfkit';
+import { createObjectCsvWriter } from 'csv-writer';
 
-// ==========================================
-// FUNCIONES AUXILIARES
-// ==========================================
-
-function getScoreColor(score) {
-  if (score >= 90) return '#27ae60'; // Green
-  if (score >= 50) return '#f39c12'; // Orange
-  return '#c0392b'; // Red
-}
-
-// Función de limpieza mejorada
+// ========== FUNCIÓN PARA LIMPIAR TEXTOS PARA PDF ==========
 function cleanTextForPDF(text) {
-  if (!text) return '';
+  if (!text || typeof text !== 'string') return '';
 
-  let str = String(text);
+  try {
+    // 1. Reemplazar caracteres especiales problemáticos de PageSpeed
+    let cleaned = text
+      .replace(/Ø=Üñ/g, '📱')
+      .replace(/Ø=ÜÊ/g, '📊')
+      .replace(/Ø=Ü¡/g, '💡')
+      .replace(/Ø=Üë/g, '🔍')
+      .replace(/Ø=Ü/g, '')
+      .replace(/þ/g, ' ')
+      .replace(/\u00C2\u00A0/g, ' ') // Reemplazar espacios no-breaking
+      .replace(/\u00E2\u20AC\u2122/g, "'") // Reemplazar comillas curvas
+      .replace(/\u00E2\u20AC\u02DC/g, "'")
+      .trim();
 
-  // 1. Eliminar patrones de basura específicos
-  str = str.replace(/Ø=Ü/g, '');
-  str = str.replace(/&¡/g, '');
-  str = str.replace(/Ø=Üñ/g, '');
-  str = str.replace(/Ø=ÜÊ/g, '');
-  str = str.replace(/Ø=Üë/g, '');
-  str = str.replace(/Ø=Ý/g, '');
+    // 2. Eliminar links markdown [text](url)
+    cleaned = cleaned.replace(/\[(.*?)\]\(.*?\)/g, '$1');
 
-  // 2. Eliminar caracteres de control (excepto espacio y salto de línea)
-  str = str.replace(/[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]/g, ' ');
+    // 3. Eliminar URLs completas
+    cleaned = cleaned.replace(/https?:\/\/[^\s]+/g, '');
 
-  return str;
+    // 4. Eliminar "Learn more" sections
+    cleaned = cleaned.replace(/Learn more about.*/gi, '');
+
+    // 5. Eliminar referencias a developer.chrome.com
+    cleaned = cleaned.replace(/developer\.chrome\.com.*/gi, '');
+
+    // 6. Eliminar referencias a web.dev
+    cleaned = cleaned.replace(/web\.dev.*/gi, '');
+
+    // 7. Reemplazar caracteres no-ASCII con espacios
+    cleaned = cleaned.replace(/[^\x00-\x7F\u00C0-\u00FF]/g, ' ');
+
+    // 8. Eliminar saltos de línea múltiples
+    cleaned = cleaned.replace(/\n\s*\n/g, '\n');
+
+    // 9. Limitar longitud si es muy largo
+    if (cleaned.length > 500) {
+      cleaned = cleaned.substring(0, 497) + '...';
+    }
+
+    return cleaned;
+  } catch (error) {
+    console.error('Error en cleanTextForPDF:', error);
+    return text ? text.substring(0, 100) : '';
+  }
 }
 
-// ==========================================
-// EXPORTACIONES ZAP (SEGURIDAD)
-// ==========================================
+// ========== FUNCIÓN PARA EXPORTAR A PDF MEJORADA ==========
+export function generatePDF(data, language = 'es') {
+  return new Promise((resolve, reject) => {
+    try {
+      // ========== VALIDACIÓN EXTRA SEGURA ==========
+      console.log('🔍 DEBUG generatePDF - Iniciando generación...');
+
+      // Validación profunda de datos
+      if (!data) {
+        console.error('❌ No hay datos para generar PDF');
+        return reject(new Error('No hay datos para generar PDF'));
+      }
+
+      // Asegurar que todos los arrays existan
+      const safeData = {
+        ...data,
+        url: data.url || 'URL no especificada',
+        fecha: data.fecha || new Date().toLocaleDateString('es-ES'),
+
+        // Garantizar categorías
+        categories: data.categories || {},
+
+        // Garantizar métricas con items array
+        metrics: {
+          performance: {
+            items: Array.isArray(data.metrics?.performance?.items)
+              ? data.metrics.performance.items
+              : []
+          }
+        },
+
+        // Garantizar auditorías con items array
+        audits: {
+          opportunities: {
+            items: Array.isArray(data.audits?.opportunities?.items)
+              ? data.audits.opportunities.items
+              : []
+          },
+          passed: {
+            items: Array.isArray(data.audits?.passed?.items)
+              ? data.audits.passed.items
+              : []
+          }
+        },
+
+        // Garantizar arrays
+        diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
+        recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+
+        // Experiencia de carga opcional
+        loadingExperience: data.loadingExperience || null
+      };
+
+      console.log('✅ Datos preparados para PDF:', {
+        url: safeData.url,
+        categories: Object.keys(safeData.categories).length,
+        metricsItems: safeData.metrics.performance.items.length,
+        opportunities: safeData.audits.opportunities.items.length,
+        passed: safeData.audits.passed.items.length,
+        diagnostics: safeData.diagnostics.length,
+        recommendations: safeData.recommendations.length
+      });
+
+      // Continuar con safeData en lugar de data
+      const doc = new PDFDocument({
+        margin: 50,
+        size: 'A4',
+        font: 'Helvetica',
+        encoding: 'UTF-8'
+      });
+
+      // Usar un array de Uint8Array en lugar de chunks mixtos
+      const chunks = [];
+
+      doc.on('data', chunk => {
+        // Asegurar que siempre sea Buffer/Uint8Array
+        if (Buffer.isBuffer(chunk)) {
+          chunks.push(chunk);
+        } else if (chunk instanceof Uint8Array) {
+          chunks.push(chunk);
+        } else {
+          // Convertir string a Buffer
+          chunks.push(Buffer.from(chunk));
+        }
+      });
+
+      doc.on('end', () => {
+        try {
+          // Concatenar todos los buffers
+          const buffer = Buffer.concat(chunks);
+          resolve(buffer);
+        } catch (error) {
+          reject(new Error(`Error concatenando buffers: ${error.message}`));
+        }
+      });
+
+      doc.on('error', (err) => {
+        console.error('Error en el stream del PDF:', err);
+        reject(err);
+      });
+
+      // Registrar fuentes (opcional, ya que Helvetica es estándar)
+      try {
+        doc.registerFont('Helvetica', 'Helvetica');
+        doc.registerFont('Helvetica-Bold', 'Helvetica-Bold');
+      } catch (e) {
+        console.warn('No se pudieron registrar fuentes personalizadas:', e.message);
+      }
+
+      // ========== PORTADA ==========
+      doc.rect(0, 0, doc.page.width, doc.page.height)
+         .fill('#2c3e50');
+
+      doc.fillColor('#ffffff')
+         .fontSize(36)
+         .font('Helvetica-Bold')
+         .text('📊 INFORME COMPLETO', 50, 150, {
+           align: 'center',
+           width: doc.page.width - 100
+         });
+
+      doc.fontSize(24)
+         .text('ANÁLISIS DE PERFORMANCE WEB', 50, 220, {
+           align: 'center',
+           width: doc.page.width - 100,
+           color: '#3498db'
+         });
+
+      // Información básica en portada
+      doc.fontSize(14)
+         .font('Helvetica')
+         .fillColor('#ecf0f1')
+         .text('URL Analizada:', 50, 320, { continued: true });
+
+      doc.font('Helvetica-Bold')
+         .text(` ${data.url || 'URL no disponible'}`, { color: '#3498db' });
+
+      doc.font('Helvetica')
+         .text(`Dispositivo: ${data.strategyLabel || (data.strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio')}`, 50, 350);
+
+      doc.text(`Fecha del Análisis: ${data.fecha || new Date().toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })}`, 50, 380);
+
+      doc.text(`Generado por: AutoGen Performance Analyzer v2.0`, 50, 410);
+
+      // ========== PÁGINA 2: RESUMEN EJECUTIVO ==========
+      doc.addPage();
+      doc.fontSize(24)
+         .font('Helvetica-Bold')
+         .fillColor('#2c3e50')
+         .text('📊 RESUMEN EJECUTIVO', 50, 50, {
+           width: doc.page.width - 100,
+           align: 'center'
+         });
+      doc.moveDown(2);
+
+      // Puntuaciones por categoría con barras de progreso
+      if (data.categories) {
+        doc.moveDown();
+        doc.fontSize(16).font('Helvetica-Bold').text('PUNTUACIONES POR CATEGORÍA');
+        doc.moveDown(0.5);
+
+        Object.values(data.categories).forEach((cat, index) => {
+          const y = doc.y;
+          const scoreColor = getScoreColor(cat.score);
+
+          // LIMPIAR TEXTO ANTES DE AGREGARLO AL PDF
+          let cleanTitle = cleanTextForPDF(cat.title || '');
+          let cleanDescription = cleanTextForPDF(cat.description || '');
+
+          // Nombre de la categoría
+          doc.fontSize(12).font('Helvetica-Bold').text(cleanTitle, 50, y);
+
+          // Puntuación numérica
+          doc.text(`${cat.score}/100`, 400, y, { align: 'right' });
+
+          // Barra de progreso
+          const barWidth = 300;
+          const barHeight = 15;
+          const fillWidth = (cat.score / 100) * barWidth;
+
+          // Fondo de la barra
+          doc.rect(50, y + 20, barWidth, barHeight)
+             .fill('#ecf0f1');
+
+          // Relleno según puntuación
+          doc.rect(50, y + 20, fillWidth, barHeight)
+             .fill(scoreColor);
+
+          // Etiqueta de calidad
+          const qualityLabel = getQualityLabel(cat.score);
+          doc.fontSize(10).font('Helvetica-Bold')
+             .fillColor('#ffffff')
+             .text(qualityLabel, 50 + fillWidth/2 - 20, y + 22, { width: 40, align: 'center' });
+
+          // Descripción
+          doc.fillColor('#666666')
+             .fontSize(10).font('Helvetica')
+             .text(cleanDescription, 50, y + 45, {
+               width: 400,
+               indent: 20
+             });
+
+          doc.moveDown(2);
+        });
+      }
+
+      // ========== PÁGINA 3: MÉTRICAS DETALLADAS ==========
+      doc.addPage();
+      doc.fontSize(24)
+         .font('Helvetica-Bold')
+         .fillColor('#2c3e50')
+         .text('📈 MÉTRICAS DETALLADAS', 50, 50, {
+           width: doc.page.width - 100,
+           align: 'center'
+         });
+      doc.moveDown(2);
+
+      if (data.metrics?.performance) {
+        const vitalMetrics = ['largest-contentful-paint', 'cumulative-layout-shift', 'interaction-to-next-paint'];
+
+        const metricsItems = data.metrics.performance.items || [];
+
+        metricsItems
+          .filter(m => vitalMetrics.includes(m.id))
+          .forEach((metric, index) => {
+          if (!metric) return;
+
+          const y = doc.y;
+          const rowColor = index % 2 === 0 ? '#f8f9fa' : '#ffffff';
+
+          // Fondo de fila
+          doc.rect(50, y - 10, doc.page.width - 100, 80)
+             .fill(rowColor);
+
+          // LIMPIAR LOS TEXTOS
+          let cleanTitle = cleanTextForPDF(metric.title || '');
+          let cleanDescription = cleanTextForPDF(metric.description || '');
+          let cleanDisplayValue = cleanTextForPDF(metric.displayValue || '');
+
+          // Título de métrica
+          doc.fontSize(14).font('Helvetica-Bold')
+             .fillColor('#2c3e50')
+             .text(cleanTitle.substring(0, 50), 60, y);
+
+          // Valor de métrica
+          if (cleanDisplayValue) {
+            doc.fontSize(16).font('Helvetica-Bold')
+               .fillColor('#3498db')
+               .text(cleanDisplayValue, 400, y, { align: 'right' });
+          }
+  // Puntuación con icono
+            if (metric.score !== null) {
+              const scorePercent = Math.round(metric.score * 100);
+              const scoreColor = getScoreColor(scorePercent);
+              const scoreIcon = getScoreIcon(scorePercent);
+
+              doc.fontSize(12)
+                 .fillColor(scoreColor)
+                 .text(`${scoreIcon} ${scorePercent}/100`, 450, y + 5);
+            }
+
+            // Descripción
+            doc.fontSize(10).font('Helvetica')
+               .fillColor('#666666')
+               .text(cleanDescription, 60, y + 25, {
+                 width: 400
+               });
+
+            // Valor numérico si existe
+            if (metric.numericValue) {
+              doc.fontSize(10)
+                 .fillColor('#7f8c8d')
+                 .text(`Valor: ${metric.numericValue} ${metric.numericUnit || ''}`, 60, y + 45);
+            }
+
+            doc.moveDown(4);
+          });
+
+          // Tabla de todas las métricas
+          doc.addPage();
+          doc.fontSize(16).font('Helvetica-Bold')
+             .fillColor('#2c3e50')
+             .text('TABLA COMPLETA DE MÉTRICAS', 50, doc.y);
+          doc.moveDown();
+
+          // Encabezados de tabla
+          const tableTop = doc.y;
+          const headers = ['Métrica', 'Valor', 'Puntuación', 'Estado'];
+          const colWidths = [250, 100, 80, 100];
+
+          // Encabezados
+          doc.fontSize(11).font('Helvetica-Bold')
+             .fillColor('#ffffff')
+             .rect(50, tableTop, doc.page.width - 100, 25)
+             .fill('#3498db');
+
+          let xPos = 50;
+          headers.forEach((header, i) => {
+            doc.text(header, xPos + 10, tableTop + 8, {
+              width: colWidths[i],
+              align: 'left'
+            });
+            xPos += colWidths[i];
+          });
+
+          // Filas de datos
+          let currentY = tableTop + 25;
+          metricsItems.forEach((metric, index) => {
+
+            if (currentY > doc.page.height - 100) {
+              doc.addPage();
+              currentY = 50;
+            }
+
+            // Fondo alternado
+            const rowBg = index % 2 === 0 ? '#f8f9fa' : '#ffffff';
+
+
+            doc.rect(50, currentY, doc.page.width - 100, 25)
+               .fill(rowBg);
+
+            // Contenido
+            xPos = 50;
+
+            // Nombre de métrica
+               const safeTitle = metric.title || 'Métrica sin nombre';
+               doc.fontSize(10)
+                  .font('Helvetica')
+                  .fillColor('#2c3e50')
+                  .text(
+                    safeTitle.substring(0, 40) + (safeTitle.length > 40 ? '...' : ''),
+                    xPos + 5,
+                    currentY + 8,
+                    { width: colWidths[0] - 10 }
+                  );
+
+               xPos += colWidths[0];
+
+            // Valor
+            doc.text(metric.displayValue || 'N/A', xPos + 5, currentY + 8, { width: colWidths[1] - 10 });
+            xPos += colWidths[1];
+
+            // Puntuación
+            const score = metric.score !== null ? Math.round(metric.score * 100) : 'N/A';
+            const scoreColor = getScoreColor(score);
+            doc.fillColor(scoreColor)
+               .text(score !== 'N/A' ? `${score}/100` : 'N/A', xPos + 5, currentY + 8, { width: colWidths[2] - 10 });
+            xPos += colWidths[2];
+
+            // Estado
+            const status = getQualityLabel(score);
+            const statusColor = getStatusColor(status);
+            doc.fillColor(statusColor)
+               .text(status, xPos + 5, currentY + 8, { width: colWidths[3] - 10 });
+
+            currentY += 25;
+            doc.y = currentY;
+          });
+        }
+
+        // ========== PÁGINA 4: AUDITORÍAS ==========
+        doc.addPage();
+        doc.fontSize(24)
+           .font('Helvetica-Bold')
+           .fillColor('#2c3e50')
+           .text('📋 AUDITORÍAS DETALLADAS', 50, 50, {
+             width: doc.page.width - 100,
+             align: 'center'
+           });
+        doc.moveDown(2);
+
+        if (data.audits) {
+          const { passed, opportunities, informational } = data.audits;
+
+          // Oportunidades de mejora (CRÍTICAS)
+          doc.fontSize(16).font('Helvetica-Bold')
+             .fillColor('#e74c3c')
+             .text('🔴 OPORTUNIDADES DE MEJORA', 50, doc.y);
+          doc.moveDown(0.5);
+
+          if (opportunities && Object.keys(opportunities).length > 0) {
+            Object.entries(opportunities).slice(0, 10).forEach(([key, audit], index) => {
+              renderAuditItem(doc, audit, index, 'oportunidad');
+            });
+          } else {
+            doc.fontSize(12).font('Helvetica')
+               .fillColor('#27ae60')
+               .text('✅ No se encontraron oportunidades críticas de mejora', 50, doc.y);
+            doc.moveDown();
+          }
+
+          // Auditorías aprobadas
+          if (passed && Object.keys(passed).length > 0) {
+            doc.addPage();
+            doc.fontSize(16).font('Helvetica-Bold')
+               .fillColor('#27ae60')
+               .text('✅ AUDITORÍAS APROBADAS', 50, doc.y);
+            doc.moveDown(0.5);
+
+            Object.entries(passed).slice(0, 15).forEach(([key, audit], index) => {
+              renderAuditItem(doc, audit, index, 'aprobada');
+            });
+          }
+        }
+
+        // ========== PÁGINA 5: DIAGNÓSTICOS ==========
+        doc.addPage();
+        doc.fontSize(24)
+           .font('Helvetica-Bold')
+           .fillColor('#2c3e50')
+           .text('🔍 DIAGNÓSTICOS ESPECÍFICOS', 50, 50, {
+             width: doc.page.width - 100,
+             align: 'center'
+           });
+        doc.moveDown(2);
+
+        if (data.diagnostics && data.diagnostics.length > 0) {
+          data.diagnostics.slice(0, 10).forEach((diag, index) => {
+            const y = doc.y;
+            const severityColor = getSeverityColor(diag.severity);
+
+            // Tarjeta de diagnóstico
+            doc.roundedRect(50, y - 10, doc.page.width - 100, 90, 5)
+               .lineWidth(2)
+               .stroke(severityColor)
+               .fill('#fff9e6');
+
+            // Encabezado
+                      doc.fontSize(14).font('Helvetica-Bold')
+                         .fillColor('#2c3e50')
+                         .text(diag.title, 60, y);
+
+                      // Severidad
+                      doc.fontSize(11)
+                         .fillColor('#ffffff')
+                         .rect(doc.page.width - 150, y - 5, 80, 20, 10)
+                         .fill(severityColor);
+
+                      doc.text(diag.severity?.toUpperCase() || 'MEDIA',
+                               doc.page.width - 150 + 10, y, { width: 60, align: 'center' });
+
+                      // Valor
+                      if (diag.displayValue) {
+                        doc.fontSize(12).font('Helvetica-Bold')
+                           .fillColor('#e67e22')
+                           .text(diag.displayValue, 60, y + 25);
+                      }
+
+                      // Descripción
+                      if (diag.description) {
+                        doc.fontSize(10).font('Helvetica')
+                           .fillColor('#666666')
+                           .text(diag.description.substring(0, 200) +
+                                 (diag.description.length > 200 ? '...' : ''),
+                                 60, y + 45, { width: doc.page.width - 160 });
+                      }
+
+                      doc.moveDown(5);
+                    });
+                  }
+
+                  // ========== PÁGINA 6: RECOMENDACIONES ==========
+                  doc.addPage();
+                  doc.fontSize(24)
+                     .font('Helvetica-Bold')
+                     .fillColor('#2c3e50')
+                     .text('💡 RECOMENDACIONES PRIORIZADAS', 50, 50, {
+                       width: doc.page.width - 100,
+                       align: 'center'
+                     });
+                  doc.moveDown(2);
+
+                  if (data.recommendations && data.recommendations.length > 0) {
+                    // Agrupar por prioridad
+                    const highPriority = data.recommendations.filter(r => r.priority === 'ALTA' || r.priority === 'HIGH');
+                    const mediumPriority = data.recommendations.filter(r => r.priority === 'MEDIA' || r.priority === 'MEDIUM');
+                    const lowPriority = data.recommendations.filter(r => r.priority === 'BAJA' || r.priority === 'LOW');
+
+                    // Alta Prioridad
+                    if (highPriority.length > 0) {
+                      doc.fontSize(16).font('Helvetica-Bold')
+                         .fillColor('#e74c3c')
+                         .text('🔥 ALTA PRIORIDAD', 50, doc.y);
+                      doc.moveDown(0.5);
+
+                      highPriority.slice(0, 5).forEach((rec, index) => {
+                        renderRecommendationItem(doc, rec, index, 'alta');
+                      });
+                    }
+
+                    // Media Prioridad
+                    if (mediumPriority.length > 0) {
+                      doc.addPage();
+                      doc.fontSize(16).font('Helvetica-Bold')
+                         .fillColor('#f39c12')
+                         .text('⚠️ PRIORIDAD MEDIA', 50, doc.y);
+                      doc.moveDown(0.5);
+
+                      mediumPriority.slice(0, 5).forEach((rec, index) => {
+                        renderRecommendationItem(doc, rec, index, 'media');
+                      });
+                    }
+
+                    // Baja Prioridad
+                    if (lowPriority.length > 0) {
+                      doc.addPage();
+                      doc.fontSize(16).font('Helvetica-Bold')
+                         .fillColor('#3498db')
+                         .text('📋 PRIORIDAD BAJA', 50, doc.y);
+                      doc.moveDown(0.5);
+
+                      lowPriority.slice(0, 5).forEach((rec, index) => {
+                        renderRecommendationItem(doc, rec, index, 'baja');
+                      });
+                    }
+                  }
+
+                  // ========== PÁGINA 7: EXPERIENCIA DE CARGA REAL ==========
+                  if (data.loadingExperience) {
+                    doc.addPage();
+                    doc.fontSize(24)
+                       .font('Helvetica-Bold')
+                       .fillColor('#2c3e50')
+                       .text('📱 EXPERIENCIA REAL DE USUARIOS', 50, 50, {
+                         width: doc.page.width - 100,
+                         align: 'center'
+                       });
+                    doc.moveDown(2);
+
+                    const exp = data.loadingExperience;
+
+                    // Tarjeta principal
+                    doc.roundedRect(50, doc.y, doc.page.width - 100, 150, 10)
+                       .fill('#e8f4fd');
+
+                    doc.fontSize(18).font('Helvetica-Bold')
+                       .fillColor('#2c3e50')
+                       .text('Métricas de Campo (Datos Reales)', 70, doc.y + 20);
+
+                    if (exp.overall_category) {
+                      const categoryColor = getCategoryColor(exp.overall_category);
+                      doc.fontSize(14)
+                         .fillColor(categoryColor)
+                         .text(`Categoría General: ${exp.overall_category}`, 70, doc.y + 50);
+                    }
+
+                    if (exp.metrics) {
+                      let metricY = doc.y + 80;
+                      Object.entries(exp.metrics).slice(0, 3).forEach(([key, metric]) => {
+                        const metricName = key.replace(/-/g, ' ').toUpperCase();
+                        doc.fontSize(12).font('Helvetica-Bold')
+                           .fillColor('#2c3e50')
+                           .text(`• ${metricName}:`, 70, metricY);
+
+                        doc.fontSize(11).font('Helvetica')
+                           .fillColor(getCategoryColor(metric.category))
+                           .text(metric.category, 200, metricY);
+
+                        metricY += 20;
+                      });
+                    }
+
+                    doc.moveDown(8);
+                  }
+
+                  // ========== MANEJO DE ERRORES ==========
+                  doc.on('error', (err) => {
+                    console.error('Error en generación de PDF:', err);
+                    reject(err);
+                  });
+
+                  try {
+                  } catch (error) {
+                    console.error('Error finalizando PDF:', error);
+                    reject(error);
+                  }
+                  doc.end();
+                } catch (error) {
+                  reject(error);
+                }
+              });
+            }
+
+// ========== NUEVAS FUNCIONES PARA ZAP SECURITY ==========
+const getRiskColor = (risk) => {
+  switch (risk.toLowerCase()) {
+    case 'high': return '#c0392b';
+    case 'medium': return '#e67e22';
+    case 'low': return '#f1c40f';
+    case 'informational': return '#3498db';
+    default: return '#95a5a6';
+  }
+};
 
 export function generateZapPDF(alerts, url) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: false });
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
       const chunks = [];
 
       doc.on('data', chunk => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // --- PORTADA ---
+      // Portada
       doc.rect(0, 0, doc.page.width, doc.page.height).fill('#2c3e50');
-      doc.fillColor('#ffffff').fontSize(32).text('INFORME DE SEGURIDAD', 50, 200, { align: 'center' });
-      doc.fontSize(18).text('Analisis OWASP ZAP', 50, 250, { align: 'center' });
-      doc.fontSize(12).fillColor('#bdc3c7').text(`Objetivo: ${url}`, 50, 300, { align: 'center' });
+      doc.fillColor('#ffffff').fontSize(32).text('🛡️ INFORME DE SEGURIDAD', 50, 200, { align: 'center' });
+      doc.fontSize(18).text('Análisis de Vulnerabilidades OWASP ZAP', 50, 250, { align: 'center' });
+      doc.fontSize(12).text(`Objetivo: ${url}`, 50, 300, { align: 'center' });
       doc.text(`Fecha: ${new Date().toLocaleString('es-ES')}`, 50, 320, { align: 'center' });
 
-      // --- PÁGINA 1: RESUMEN ---
+      // Página de Resumen
       doc.addPage();
-      doc.fillColor('#2c3e50').fontSize(20).text('RESUMEN DE RIESGOS', 50, 50);
-      doc.moveDown(20);
+      doc.fillColor('#2c3e50').fontSize(20).text('RESUMEN DE VULNERABILIDADES', 50, 50);
 
+      // Contar riesgos
       const summary = { High: 0, Medium: 0, Low: 0, Informational: 0 };
-      alerts.forEach(a => { if (a && a.risk && summary[a.risk] !== undefined) summary[a.risk]++; });
+      alerts.forEach(a => { if (summary[a.risk] !== undefined) summary[a.risk]++; });
 
       let yPos = 100;
-      const risks = [
-        { key: 'High', color: '#c0392b', label: 'Alto' },
-        { key: 'Medium', color: '#e67e22', label: 'Medio' },
-        { key: 'Low', color: '#f1c40f', label: 'Bajo' },
-        { key: 'Informational', color: '#3498db', label: 'Info' }
-      ];
-
-      risks.forEach(r => {
-        doc.rect(50, yPos, 400, 40).fill(r.color);
-        doc.fillColor('#ffffff').fontSize(14).font('Helvetica-Bold')
-           .text(`${r.label}: ${summary[r.key]} alertas`, 60, yPos + 12);
-        doc.moveDown(50); // Ajuste de espaciado
+      Object.entries(summary).forEach(([risk, count]) => {
+        doc.rect(50, yPos, 400, 30).fill(getRiskColor(risk));
+        doc.fillColor('#ffffff').fontSize(12).text(`${risk.toUpperCase()}: ${count} alertas`, 60, yPos + 10);
+        yPos += 40;
       });
 
-      // --- PÁGINA 2: DETALLES ---
+      // Detalles
       doc.addPage();
-      doc.fillColor('#2c3e50').fontSize(20).text('DETALLE DE VULNERABILIDADES', 50, 50);
-      doc.moveDown(20);
+      doc.fillColor('#2c3e50').fontSize(20).text('DETALLE DE ALERTAS', 50, 50);
+      yPos = 80;
 
-      alerts.forEach((alert, index) => {
+      alerts.forEach((alert, i) => {
         if (yPos > 700) { doc.addPage(); yPos = 50; }
 
-        const color = alert.risk === 'High' ? '#c0392b' : alert.risk === 'Medium' ? '#e67e22' : alert.risk === 'Low' ? '#f1c40f' : '#3498db';
-
-        // Caja de la alerta
-        doc.rect(50, yPos, doc.page.width - 100, 80).lineWidth(1).stroke(color);
-
-        // Nombre
-        const name = cleanTextForPDF(alert.name || 'Sin nombre');
-        doc.fillColor(color).fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${name}`, 60, yPos + 5);
-
-        // URL
-        const urlAlert = alert.url || 'N/A';
-        doc.fillColor('#333').fontSize(10).font('Helvetica')
-           .text(`URL: ${urlAlert}`, 60, yPos + 20, { width: doc.page.width - 120, ellipsis: true });
-
-        // Descripción
-        if (alert.description) {
-            const desc = cleanTextForPDF(alert.description).substring(0, 150);
-            doc.text(`Desc: ${desc}...`, 60, yPos + 35, { width: doc.page.width - 120 });
-        }
-
-        // Solución
-        if (alert.solution) {
-            const sol = cleanTextForPDF(alert.solution).substring(0, 100);
-            doc.fillColor('#2980b9').text(`Sol: ${sol}...`, 60, yPos + 50, { width: doc.page.width - 120 });
-        }
-
-        yPos += 90;
+        doc.fillColor(getRiskColor(alert.risk)).fontSize(14).text(`${i + 1}. ${alert.name}`, 50, yPos);
+        yPos += 20;
+        doc.fillColor('#333333').fontSize(10).text(`Riesgo: ${alert.risk} | URL: ${alert.url}`, 50, yPos);
+        yPos += 15;
+        doc.text(`Descripción: ${alert.description.substring(0, 200)}...`, 50, yPos);
+        yPos += 15;
+        doc.fillColor('#2980b9').text(`Solución: ${alert.solution.substring(0, 200)}...`, 50, yPos);
+        yPos += 30;
       });
 
       doc.end();
@@ -120,263 +711,395 @@ export function generateZapPDF(alerts, url) {
 
 export function generateZapCSV(alerts) {
   return new Promise((resolve, reject) => {
-    try {
-      const header = ['RIESGO', 'NOMBRE', 'CONFIDENZA', 'URL', 'DESCRIPCION', 'SOLUCION'];
-      const rows = alerts.map(alert => {
-        const escape = (txt) => {
-            if (!txt) return '""';
-            return `"${String(txt).replace(/"/g, '""')}"`;
-        };
+    const csvWriter = createObjectCsvWriter({
+      path: `output/zap_report_${Date.now()}.csv`, // Asegúrate que la carpeta output exista
+      header: [
+        {id: 'name', title: 'NOMBRE'},
+        {id: 'risk', title: 'RIESGO'},
+        {id: 'confidence', title: 'CONFIANZA'},
+        {id: 'url', title: 'URL AFECTADA'},
+        {id: 'param', title: 'PARÁMETRO'},
+        {id: 'description', title: 'DESCRIPCIÓN'},
+        {id: 'solution', title: 'SOLUCIÓN'}
+      ]
+    });
 
-        return [
-            escape(alert.risk),
-            escape(alert.name),
-            escape(alert.confidence),
-            escape(alert.url),
-            escape(cleanTextForPDF(alert.description)),
-            escape(cleanTextForPDF(alert.solution))
-        ];
-      });
-
-      // Convertir a CSV correctamente: Headers + Filas
-      const csvContent = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
-      resolve(Buffer.from(csvContent, 'utf-8'));
-    } catch (error) {
-      reject(error);
-    }
+    csvWriter.writeRecords(alerts)
+      .then(() => {
+        // Leer el archivo y devolverlo como buffer
+        const fs = require('fs');
+        const path = require('path');
+        // Esto es simplificado, en producción idealmente devuelves el stream directamente
+        // Pero para este ejemplo asumiremos que guardas y lees o el CSVWriter soporta buffer
+        // Para simplificar la respuesta HTTP, devolveremos un string CSV simple
+        const header = ['NOMBRE,RIESGO,CONFIANZA,URL,DESCRIPCIÓN,SOLUCIÓN'];
+        const rows = alerts.map(a =>
+          `"${a.name}","${a.risk}","${a.confidence}","${a.url}","${a.description.replace(/"/g, '""')}","${a.solution.replace(/"/g, '""')}"`
+        );
+        resolve(Buffer.from([...header, ...rows].join('\n')));
+      })
+      .catch(reject);
   });
 }
 
-// ==========================================
-// EXPORTACIONES PERFORMANCE (PAGESPEED)
-// ==========================================
 
-export function generatePDF(data) {
-  return new Promise((resolve, reject) => {
-    try {
-      if (!data) return reject(new Error('No hay datos'));
+  // ========== FUNCIONES AUXILIARES PARA PDF ==========
 
-      const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: false });
-      const chunks = [];
+  function addSectionHeader(doc, title) {
+    doc.fontSize(24)
+       .font('Helvetica-Bold')
+       .fillColor('#2c3e50')
+       .text(title, 50, 50, {
+         width: doc.page.width - 100,
+         align: 'center'
+       });
 
-      doc.on('data', chunk => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
+    doc.moveDown();
+  }
 
-      // --- PORTADA ---
-      doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ecf0f1');
-      doc.fillColor('#2c3e50').fontSize(36).text('INFORME RENDIMIENTO', 50, 150, { align: 'center' });
-      doc.fontSize(24).fillColor('#3498db').text('Análisis Web Performance', 50, 200, { align: 'center' });
-      doc.fontSize(14).fillColor('#7f8c8d').text(`URL: ${data.url || 'N/A'}`, 50, 300, { align: 'center' });
-      doc.text(`Estrategia: ${data.strategy === 'mobile' ? 'Móvil' : 'Escritorio'}`, 50, 320, { align: 'center' });
-      doc.text(`Fecha: ${new Date().toLocaleString('es-ES')}`, 50, 340, { align: 'center' });
+  function getScoreColor(score) {
+    if (score >= 90) return "#27ae60";
+    if (score >= 70) return "#f39c12";
+    if (score >= 50) return "#e67e22";
+    return "#e74c3c";
+  }
 
-      // --- PÁGINA 1: RESUMEN ---
-      doc.addPage();
-      doc.fillColor('#2c3e50').fontSize(24).text('RESUMEN EJECUTIVO', 50, 50);
-      doc.moveDown(10); // Solo 10px de espacio
+  function getQualityLabel(score) {
+    if (score >= 90) return "Excelente";
+    if (score >= 70) return "Bueno";
+    if (score >= 50) return "Regular";
+    return "Mejorable";
+  }
 
-      // Categorías
-      if (data.categories) {
-        Object.values(data.categories).forEach(cat => {
-          // Barra de fondo
-          doc.rect(50, doc.y, 400, 20).fill('#ecf0f1');
-          // Barra de progreso
-          const width = (cat.score / 100) * 400;
-          doc.rect(50, doc.y, width, 20).fill(getScoreColor(cat.score));
+  function getScoreIcon(score) {
+    if (score >= 90) return "✅";
+    if (score >= 70) return "⚠️";
+    return "❌";
+  }
 
-          // Texto (LIMPIEZA + MOVE DOWN PEQUEÑO)
-          const titleClean = cleanTextForPDF(cat.title);
-          doc.fillColor('#2c3e50').fontSize(12).text(`${titleClean}: ${Math.round(cat.score)}/100`, 50, doc.y - 15);
-          doc.moveDown(5); // Solo 5px de espacio extra, no 30 ni 50
-        });
-      }
-
-      // --- PÁGINA 2: MÉTRICAS CORE ---
-      doc.addPage();
-      doc.fillColor('#2c3e50').fontSize(24).text('MÉTRICAS PRINCIPALES', 50, 50);
-      doc.moveDown(10);
-
-      const coreMetrics = ['largest-contentful-paint', 'cumulative-layout-shift', 'total-blocking-time', 'first-contentful-paint'];
-
-      if (data.metrics?.performance?.items) {
-        data.metrics.performance.items
-          .filter(m => coreMetrics.includes(m.id))
-          .forEach(m => {
-            // Fila de métrica
-            doc.rect(50, doc.y, doc.page.width - 100, 60).fill('#fff').stroke('#ddd');
-
-            const titleClean = cleanTextForPDF(m.title);
-            const descClean = cleanTextForPDF(m.description);
-
-            doc.fillColor('#2c3e50').fontSize(12).font('Helvetica-Bold').text(titleClean, 60, doc.y);
-
-            // Descripción con wrapping (EL WRAPPING AVANZA LA POSICIÓN Y AUTOMÁTICAMENTE CREA EL ESPACIO NECESARIO)
-            doc.fillColor('#7f8c8d').fontSize(10).text(descClean, 60, doc.y + 20, { width: 300 });
-
-            // Valor numérico a la derecha
-            const displayValue = m.displayValue || 'N/A';
-            const score = m.score !== null ? Math.round(m.score * 100) : 0;
-
-            doc.fillColor('#3498db').fontSize(14).font('Helvetica-Bold').text(displayValue, 400, doc.y);
-            doc.fillColor(getScoreColor(score)).fontSize(10).text(`Score: ${score}%`, 400, doc.y + 20);
-
-            doc.moveDown(10); // Solo 10px de espacio entre filas de métricas
-          });
-      }
-
-      // --- PÁGINA 3: OPORTUNIDADES DE MEJORA ---
-      doc.addPage();
-      doc.fillColor('#c0392b').fontSize(24).text('OPORTUNIDADES DE MEJORA', 50, 50);
-      doc.moveDown(10);
-
-      const opportunities = data.audits?.opportunities?.items || [];
-
-      if (opportunities.length === 0) {
-        doc.fillColor('#27ae60').text('No se encontraron oportunidades críticas.', 50, 100);
-      } else {
-        opportunities.slice(0, 10).forEach(audit => {
-          if (doc.y > 700) { doc.addPage(); doc.y = 50; }
-
-          doc.rect(50, doc.y, doc.page.width - 100, 5).fill('#c0392b');
-
-          const titleClean = cleanTextForPDF(audit.title);
-          const descClean = cleanTextForPDF(audit.description);
-
-          doc.fillColor('#2c3e50').fontSize(11).font('Helvetica-Bold').text(titleClean, 50, doc.y + 5);
-
-          if (audit.displayValue) {
-             doc.fillColor('#c0392b').fontSize(10).text(`Ahorro: ${audit.displayValue}`, 400, doc.y + 5);
-          }
-
-          // Descripción con wrapping (NO NECESITA MOVEDOWN)
-          doc.fillColor('#555').fontSize(9).text(descClean, 50, doc.y + 25, { width: doc.page.width - 120 });
-
-          doc.moveDown(15); // Pequeño espacio entre oportunidades
-        });
-      }
-
-      // --- PÁGINA 4: AUDITORÍAS APROBADAS ---
-      doc.addPage();
-      doc.fillColor('#27ae60').fontSize(24).text('AUDITORÍAS APROBADAS', 50, 50);
-      doc.moveDown(10);
-
-      const passed = data.audits?.passed?.items || [];
-
-      passed.slice(0, 20).forEach(audit => {
-        if (doc.y > 750) { doc.addPage(); doc.y = 50; }
-        const titleClean = cleanTextForPDF(audit.title);
-        doc.fontSize(9).fillColor('#2c3e50').text(`- ${titleClean}`, 50, doc.y);
-        doc.moveDown(5); // Solo 5px
-      });
-
-      doc.end();
-    } catch (error) {
-      console.error('Error generando PDF:', error);
-      reject(error);
+  function getStatusColor(status) {
+    switch(status.toLowerCase()) {
+      case 'excelente': return '#27ae60';
+      case 'bueno': return '#f39c12';
+      case 'regular': return '#e67e22';
+      case 'mejorable': return '#e74c3c';
+      default: return '#7f8c8d';
     }
-  });
-}
+  }
 
-// ==========================================
-// FUNCIÓN GENERAR CSV (COMPLETA Y CORREGIDA)
-// ==========================================
+  function getSeverityColor(severity) {
+    switch((severity || '').toLowerCase()) {
+      case 'alta':
+      case 'high': return '#e74c3c';
+      case 'media':
+      case 'medium': return '#f39c12';
+      case 'baja':
+      case 'low': return '#3498db';
+      default: return '#95a5a6';
+    }
+  }
+
+  function getCategoryColor(category) {
+    switch((category || '').toUpperCase()) {
+      case 'FAST':
+      case 'RÁPIDO': return '#27ae60';
+      case 'AVERAGE':
+      case 'PROMEDIO': return '#f39c12';
+      case 'SLOW':
+      case 'LENTO': return '#e74c3c';
+      default: return '#95a5a6';
+    }
+  }
+
+  function renderAuditItem(doc, audit, index, type) {
+    const y = doc.y;
+    const rowColor = index % 2 === 0 ? '#ffffff' : '#f8f9fa';
+    const borderColor = type === 'oportunidad' ? '#e74c3c' :
+                       type === 'aprobada' ? '#27ae60' : '#3498db';
+
+    // LIMPIAR LOS TEXTOS DE LA AUDITORÍA
+    let cleanTitle = cleanTextForPDF(audit?.title || '');
+    let cleanDescription = cleanTextForPDF(audit?.description || '');
+    let cleanDisplayValue = cleanTextForPDF(audit?.displayValue || '');
+
+    // Validar que haya espacio en la página
+    if (y > doc.page.height - 100) {
+      doc.addPage();
+    }
+
+    // Tarjeta de auditoría
+    doc.roundedRect(50, y - 10, doc.page.width - 100, 70, 5)
+       .lineWidth(1)
+       .stroke(borderColor)
+       .fill(rowColor);
+
+    // Título
+    doc.fontSize(12).font('Helvetica-Bold')
+       .fillColor('#2c3e50')
+       .text(cleanTitle, 60, y, {
+         width: doc.page.width - 200,
+         ellipsis: true
+       });
+
+    // Puntuación
+    if (audit?.score !== null && audit?.score !== undefined) {
+      const scorePercent = Math.round(audit.score * 100);
+      const scoreColor = getScoreColor(scorePercent);
+
+      doc.fontSize(11)
+         .fillColor(scoreColor)
+         .text(`${scorePercent}/100`, doc.page.width - 120, y, { align: 'right' });
+    }
+
+    // Valor mostrado
+    if (cleanDisplayValue && cleanDisplayValue.trim() !== '') {
+      doc.fontSize(10).font('Helvetica')
+         .fillColor('#e67e22')
+         .text(cleanDisplayValue, 60, y + 20);
+    }
+
+    // Descripción (truncada)
+    if (cleanDescription && cleanDescription.trim() !== '') {
+      doc.fontSize(9)
+         .fillColor('#666666')
+         .text(cleanDescription.substring(0, 150) +
+               (cleanDescription.length > 150 ? '...' : ''),
+               60, y + 35, {
+                 width: doc.page.width - 160
+               });
+    }
+
+    doc.moveDown(3.5);
+  }
+
+  function renderRecommendationItem(doc, recommendation, index, priority) {
+    const y = doc.y;
+    const priorityColors = {
+      alta: '#ffe6e6',
+      media: '#fff3cd',
+      baja: '#e8f4fd'
+    };
+
+    const bgColor = priorityColors[priority] || '#f8f9fa';
+
+    // Tarjeta de recomendación
+    doc.roundedRect(50, y - 10, doc.page.width - 100, 90, 8)
+       .fill(bgColor);
+
+    // Título con icono de prioridad
+    const priorityIcons = {
+      alta: '🔥',
+      media: '⚠️',
+      baja: '📋'
+    };
+
+    doc.fontSize(14).font('Helvetica-Bold')
+       .fillColor('#2c3e50')
+       .text(`${priorityIcons[priority]} ${recommendation.title}`, 60, y);
+
+    // Descripción
+    if (recommendation.description) {
+      doc.fontSize(10).font('Helvetica')
+         .fillColor('#666666')
+         .text(recommendation.description, 60, y + 25, {
+           width: doc.page.width - 160,
+           ellipsis: true
+         });
+    }
+
+    // Impacto
+    if (recommendation.impact) {
+      doc.fontSize(10).font('Helvetica-Bold')
+         .fillColor('#2c3e50')
+         .text(`Impacto: ${recommendation.impact}`, 60, y + 50);
+    }
+
+    // Acción recomendada
+    if (recommendation.action) {
+      doc.fontSize(9).font('Helvetica')
+         .fillColor('#27ae60')
+         .text(`Acción: ${recommendation.action.substring(0, 80)}...`, 60, y + 65);
+    }
+
+    doc.moveDown(4);
+  }
+
+// ========== FUNCIÓN PARA EXPORTAR A CSV MEJORADA ==========
 export function generateCSV(data) {
   return new Promise((resolve, reject) => {
     try {
       const csvData = [];
 
-      // 1. METADATOS
+      // 1. METADATOS DEL ANÁLISIS
       csvData.push(['SECCIÓN', 'CAMPO', 'VALOR', 'UNIDAD', 'PUNTUACIÓN', 'ESTADO']);
-      csvData.push(['INFORMACIÓN GENERAL', 'URL', data.url || '', '', '', '']);
-      csvData.push(['INFORMACIÓN GENERAL', 'Dispositivo', data.strategyLabel || data.strategy || '', '', '', '']);
-      csvData.push(['INFORMACIÓN GENERAL', 'Fecha', new Date().toLocaleDateString('es-ES'), '', '', '']);
-      csvData.push([]); // Fila vacía para separar
+      csvData.push(['INFORMACIÓN GENERAL', 'URL', data.url, '', '', '']);
+      csvData.push(['INFORMACIÓN GENERAL', 'Dispositivo', data.strategyLabel || data.strategy, '', '', '']);
+      csvData.push(['INFORMACIÓN GENERAL', 'Fecha', data.fecha, '', '', '']);
+      csvData.push(['INFORMACIÓN GENERAL', 'Puntuación Total', data.summary?.performanceScore || 0, '', '', '']);
+      csvData.push([]);
 
-      // 2. CATEGORÍAS
-      csvData.push(['CATEGORÍAS', 'Nombre', 'Puntuación', 'Estado', 'Descripción']);
+      // 2. CATEGORÍAS COMPLETAS
+      csvData.push(['CATEGORÍAS', 'Nombre', 'Puntuación', 'Estado', 'Descripción', 'Prioridad']);
       if (data.categories) {
         Object.values(data.categories).forEach(cat => {
-          const estado = cat.score >= 90 ? 'EXCELENTE' : cat.score >= 70 ? 'BUENO' : cat.score >= 50 ? 'REGULAR' : 'MEJORABLE';
-          const cleanTitle = cleanTextForPDF(cat.title);
-          const cleanDesc = cleanTextForPDF(cat.description);
-          csvData.push(['CATEGORÍAS', cleanTitle, cat.score, estado, cleanDesc]);
+          const estado = cat.score >= 90 ? 'EXCELENTE' :
+                        cat.score >= 70 ? 'BUENO' :
+                        cat.score >= 50 ? 'REGULAR' : 'MEJORABLE';
+          csvData.push(['CATEGORÍAS', cat.title, cat.score, estado, cat.description, 'ALTA']);
         });
       }
       csvData.push([]);
 
-      // 3. MÉTRICAS
+      // 3. TODAS LAS MÉTRICAS
       csvData.push(['MÉTRICAS', 'Nombre', 'Valor', 'Unidad', 'Score', 'Estado']);
+
       if (data.metrics?.performance) {
-        const metricsItems = Array.isArray(data.metrics.performance.items) ? data.metrics.performance.items : Object.values(data.metrics.performance || {});
+        const metricsItems = Array.isArray(data.metrics?.performance?.items)
+          ? data.metrics.performance.items
+          : Object.values(data.metrics?.performance || {});
+
         metricsItems.forEach(metric => {
-          const estado = metric.score >= 0.9 ? 'EXCELENTE' : metric.score >= 0.5 ? 'BUENO' : 'MEJORABLE';
-          const cleanTitle = cleanTextForPDF(metric.title);
-          csvData.push(['MÉTRICAS', cleanTitle, metric.numericValue || '', metric.numericUnit || '', metric.score != null ? Math.round(metric.score * 100) : '', estado]);
+          const estado =
+            metric.score >= 0.9 ? 'EXCELENTE' :
+            metric.score >= 0.5 ? 'BUENO' :
+            'MEJORABLE';
+
+          csvData.push([
+            'MÉTRICAS',
+            metric.title || 'Sin nombre',
+            metric.numericValue || '',
+            metric.numericUnit || '',
+            metric.score != null ? Math.round(metric.score * 100) : '',
+            estado
+          ]);
         });
       }
+
       csvData.push([]);
 
-      // 4. AUDITORÍAS
+      // 4. AUDITORÍAS DETALLADAS
       csvData.push(['AUDITORÍAS', 'Tipo', 'Título', 'Descripción', 'Ahorro', 'Score', 'Severidad']);
 
       // Oportunidades
       if (data.audits?.opportunities) {
-        const oppItems = Array.isArray(data.audits.opportunities.items) ? data.audits.opportunities.items : Object.values(data.audits.opportunities || {});
-        oppItems.forEach(audit => {
-          const cleanTitle = cleanTextForPDF(audit.title);
-          const cleanDesc = cleanTextForPDF(audit.description);
-          csvData.push(['AUDITORÍAS', 'OPORTUNIDAD', cleanTitle, cleanDesc?.substring(0, 200), audit.displayValue || '', audit.score ? Math.round(audit.score * 100) : '', 'ALTA']);
+        const opportunityItems = Array.isArray(data.audits?.opportunities?.items)
+          ? data.audits.opportunities.items
+          : Object.values(data.audits?.opportunities || {});
+
+        opportunityItems.forEach(audit => {
+          csvData.push([
+            'AUDITORÍAS',
+            'OPORTUNIDAD',
+            audit.title,
+            audit.description?.substring(0, 200) || '',
+            audit.displayValue || '',
+            audit.score ? Math.round(audit.score * 100) : '',
+            'ALTA'
+          ]);
         });
       }
 
       // Aprobadas
       if (data.audits?.passed) {
-        const passedItems = Array.isArray(data.audits.passed.items) ? data.audits.passed.items : Object.values(data.audits.passed || {});
+        const passedItems = Array.isArray(data.audits?.passed?.items)
+          ? data.audits.passed.items
+          : Object.values(data.audits?.passed || {});
+
         passedItems.forEach(audit => {
-           const cleanTitle = cleanTextForPDF(audit.title);
-           const cleanDesc = cleanTextForPDF(audit.description);
-           csvData.push(['AUDITORÍAS', 'APROBADA', cleanTitle, cleanDesc?.substring(0, 200), '', audit.score ? Math.round(audit.score * 100) : '', 'BAJA']);
+          csvData.push([
+            'AUDITORÍAS',
+            'APROBADA',
+            audit.title,
+            audit.description?.substring(0, 200) || '',
+            '',
+            audit.score ? Math.round(audit.score * 100) : '',
+            'BAJA'
+          ]);
         });
       }
       csvData.push([]);
 
-      // 5. DIAGNÓSTICOS
-      csvData.push(['DIAGNÓSTICOS', 'ID', 'Título', 'Descripción', 'Valor', 'Severidad', 'Impacto']);
-      const diagnostics = Array.isArray(data.diagnostics) ? data.diagnostics : Object.values(data.diagnostics || {});
-      diagnostics.forEach(diag => {
-        const cleanTitle = cleanTextForPDF(diag.title);
-        const cleanDesc = cleanTextForPDF(diag.description);
-        csvData.push(['DIAGNÓSTICOS', diag.id || 'N/A', cleanTitle, cleanDesc.substring(0, 200).replace(/"/g, '""'), diag.displayValue || 'N/A', diag.severity || 'MEDIA', diag.impact || 'ALTO']);
+     // 5. DIAGNÓSTICOS COMPLETOS
+     csvData.push(['DIAGNÓSTICOS', 'ID', 'Título', 'Descripción', 'Valor', 'Severidad', 'Impacto', 'Score']);
+
+     const diagnostics = Array.isArray(data.diagnostics)
+       ? data.diagnostics
+       : Object.values(data.diagnostics || {});
+
+     diagnostics.forEach(diag => {
+       csvData.push([
+         'DIAGNÓSTICOS',
+         diag.id || 'N/A',
+         diag.title || 'Sin título',
+         (diag.description || '').substring(0, 200).replace(/"/g, '""'),
+         diag.displayValue || 'N/A',
+         diag.severity || 'MEDIA',
+         diag.impact || 'ALTO',
+         diag.score !== undefined ? Math.round(diag.score * 100) : 'N/A'
+       ]);
+     });
+
+     csvData.push([]);
+
+      // 6. RECOMENDACIONES COMPLETAS
+      csvData.push(['RECOMENDACIONES', 'Prioridad', 'Título', 'Descripción', 'Impacto', 'Acción', 'AuditID', 'Ahorro Estimado']);
+
+      const recommendations = Array.isArray(data.recommendations)
+        ? data.recommendations
+        : Object.values(data.recommendations || {});
+
+      recommendations.forEach(rec => {
+        csvData.push([
+          'RECOMENDACIONES',
+          rec.priority || 'MEDIA',
+          rec.title || 'Sin título',
+          (rec.description || '').substring(0, 150).replace(/"/g, '""'),
+          rec.impact || '',
+          rec.action || '',
+          rec.auditId || '',
+          rec.estimatedSavings || ''
+        ]);
       });
+
       csvData.push([]);
 
-      // 6. RECOMENDACIONES (CORREGIDO AQUÍ)
-      // Lógica para asegurar que siempre se impriman recomendaciones
-      const recommendations = Array.isArray(data.recommendations) && data.recommendations.length > 0
-        ? data.recommendations
-        : [
-            { priority: 'ALTA', title: 'Optimizar imágenes', description: 'Usa formatos WebP, comprime imágenes', impact: 'ALTO', action: 'Comprimir imágenes' },
-            { priority: 'ALTA', title: 'Minificar CSS y JS', description: 'Reduce el tamaño de los archivos', impact: 'ALTO', action: 'Minificar recursos' },
-            { priority: 'MEDIA', title: 'Eliminar JS no usado', description: 'Quitar código que no se ejecuta', impact: 'MEDIO', action: 'Tree Shaking' },
-            { priority: 'MEDIA', title: 'Lazy Loading', description: 'Cargar contenido bajo demanda', impact: 'MEDIO', action: 'Implementar lazy loading' },
-            { priority: 'BAJA', title: 'Optimizar Fuentes', description: 'Usar font-display: swap', impact: 'BAJO', action: 'Optimizar web fonts' }
-          ];
+      // 7. EXPERIENCIA DE CARGA COMPLETA
+      if (data.loadingExperience) {
+        csvData.push(['EXPERIENCIA CARGA', 'Métrica', 'Categoría', 'Percentil', 'Distribución', 'Estado']);
 
-      csvData.push(['RECOMENDACIONES', 'Prioridad', 'Título', 'Descripción', 'Impacto', 'Acción']);
-      recommendations.forEach(rec => {
-        const cleanTitle = cleanTextForPDF(rec.title);
-        const cleanDesc = cleanTextForPDF(rec.description || '');
-        csvData.push(['RECOMENDACIONES', rec.priority, cleanTitle, cleanDesc.substring(0, 150).replace(/"/g, '""'), rec.impact || '', rec.action || '']);
-      });
+        if (data.loadingExperience.overall_category) {
+          csvData.push([
+            'EXPERIENCIA CARGA',
+            'OVERALL',
+            data.loadingExperience.overall_category || '',
+            '',
+            '',
+            data.loadingExperience.overall_category === 'FAST' ? 'BUENO' : 'MEJORABLE'
+          ]);
+        }
 
-      // Convertir a String CSV Correcto
-      const csvContent = csvData.map(row => {
-        return row.map(cell => {
+        if (data.loadingExperience.metrics) {
+          Object.entries(data.loadingExperience.metrics).forEach(([key, metric]) => {
+            csvData.push([
+              'EXPERIENCIA CARGA',
+              key,
+              metric.category || '',
+              metric.percentile || '',
+              JSON.stringify(metric.distributions || []),
+              metric.category === 'FAST' ? 'BUENO' : 'MEJORABLE'
+            ]);
+          });
+        }
+        csvData.push([]);
+      }
+
+      // Convertir a string CSV
+      const csvContent = csvData.map(row =>
+        row.map(cell => {
           const cellStr = String(cell || '');
           return `"${cellStr.replace(/"/g, '""')}"`;
-        }).join(',');
-      }).join('\n');
+        }).join(',')
+      ).join('\n');
 
       resolve(csvContent);
     } catch (error) {
