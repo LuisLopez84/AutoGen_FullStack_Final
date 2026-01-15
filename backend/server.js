@@ -4775,4 +4775,67 @@ app.post('/api/zap/export/csv', async (req, res) => {
 });
 
 
+
+// ==========================================
+// ENDPOINTS DE EXPORTACIÓN ZAP (SEGURIDAD)
+// ==========================================
+
+// Endpoint para descargar el PDF de ZAP
+app.post("/api/zap/pdf", async (req, res) => {
+  try {
+    console.log("📄 Generando PDF de ZAP...");
+    const { alerts, url } = req.body;
+
+    // Validación básica
+    if (!alerts || !Array.isArray(alerts)) {
+      return res.status(400).json({ error: "No se proporcionaron datos de alertas válidos" });
+    }
+
+    // Llamada a la función corregida
+    const pdfBuffer = await generateZapPDF(alerts, url);
+
+    // Envío del buffer como descarga
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'attachment; filename="security_scan_report.pdf"',
+      'Content-Length': pdfBuffer.length
+    });
+
+    res.send(pdfBuffer);
+    console.log("✅ PDF generado y enviado.");
+
+  } catch (error) {
+    console.error("❌ Error generando PDF ZAP:", error);
+    res.status(500).json({ error: "Error interno generando el PDF", details: error.message });
+  }
+});
+
+// Endpoint para descargar el CSV de ZAP
+app.post("/api/zap/csv", async (req, res) => {
+  try {
+    console.log("📊 Generando CSV de ZAP...");
+    const { alerts } = req.body;
+
+    if (!alerts || !Array.isArray(alerts)) {
+      return res.status(400).json({ error: "No se proporcionaron datos de alertas válidos" });
+    }
+
+    const csvBuffer = await generateZapCSV(alerts);
+
+    res.set({
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename="security_scan_data.csv"',
+      'Content-Length': csvBuffer.length
+    });
+
+    res.send(csvBuffer);
+    console.log("✅ CSV generado y enviado.");
+
+  } catch (error) {
+    console.error("❌ Error generando CSV ZAP:", error);
+    res.status(500).json({ error: "Error interno generando el CSV", details: error.message });
+  }
+});
+
+
     app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));

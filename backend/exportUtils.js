@@ -31,12 +31,17 @@ function cleanTextForPDF(text) {
 }
 
 // ==========================================
-// EXPORTACIONES ZAP (SEGURIDAD)
+// EXPORTACIONES ZAP (SEGURIDAD) - CORREGIDAS
 // ==========================================
 
 export function generateZapPDF(alerts, url) {
   return new Promise((resolve, reject) => {
     try {
+      // Validación de entrada para evitar errores silenciosos
+      if (!alerts || !Array.isArray(alerts)) {
+        return reject(new Error('No se proporcionaron alertas válidas para el PDF.'));
+      }
+
       const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: false });
       const chunks = [];
 
@@ -71,7 +76,7 @@ export function generateZapPDF(alerts, url) {
         doc.rect(50, yPos, 400, 40).fill(r.color);
         doc.fillColor('#ffffff').fontSize(14).font('Helvetica-Bold')
            .text(`${r.label}: ${summary[r.key]} alertas`, 60, yPos + 12);
-        doc.moveDown(50); // Ajuste de espaciado
+        yPos += 50; // Ajuste de espaciado correcto
       });
 
       // --- PÁGINA 2: DETALLES ---
@@ -79,7 +84,12 @@ export function generateZapPDF(alerts, url) {
       doc.fillColor('#2c3e50').fontSize(20).text('DETALLE DE VULNERABILIDADES', 50, 50);
       doc.moveDown(20);
 
+      // --- CORRECCIÓN CRÍTICA: Reiniciar yPos al inicio de la página actual ---
+      // Esto evita el espacio en blanco gigante en la página 2
+      yPos = doc.y;
+
       alerts.forEach((alert, index) => {
+        // Control de salto de página
         if (yPos > 700) { doc.addPage(); yPos = 50; }
 
         const color = alert.risk === 'High' ? '#c0392b' : alert.risk === 'Medium' ? '#e67e22' : alert.risk === 'Low' ? '#f1c40f' : '#3498db';
@@ -113,6 +123,7 @@ export function generateZapPDF(alerts, url) {
 
       doc.end();
     } catch (error) {
+      console.error("Error en generateZapPDF:", error);
       reject(error);
     }
   });
@@ -121,7 +132,12 @@ export function generateZapPDF(alerts, url) {
 export function generateZapCSV(alerts) {
   return new Promise((resolve, reject) => {
     try {
-      const header = ['RIESGO', 'NOMBRE', 'CONFIDENZA', 'URL', 'DESCRIPCION', 'SOLUCION'];
+      if (!alerts || !Array.isArray(alerts)) {
+        return reject(new Error('No se proporcionaron alertas válidas para el CSV.'));
+      }
+
+      // CORRECCIÓN TIPoGRÁFICA: "CONFIDENZA" -> "CONFIANZA"
+      const header = ['RIESGO', 'NOMBRE', 'CONFIANZA', 'URL', 'DESCRIPCION', 'SOLUCION'];
       const rows = alerts.map(alert => {
         const escape = (txt) => {
             if (!txt) return '""';
@@ -138,10 +154,10 @@ export function generateZapCSV(alerts) {
         ];
       });
 
-      // Convertir a CSV correctamente: Headers + Filas
       const csvContent = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
       resolve(Buffer.from(csvContent, 'utf-8'));
     } catch (error) {
+      console.error("Error en generateZapCSV:", error);
       reject(error);
     }
   });
