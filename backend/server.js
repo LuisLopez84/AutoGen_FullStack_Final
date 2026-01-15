@@ -346,6 +346,23 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use((req,res,next)=>{ console.log(new Date().toISOString(), req.method, req.url); next(); });
 
+
+// ==========================================
+// MIDDLEWARE DE DEPURACIÓN GLOBAL (DEBUG)
+// ==========================================
+app.use((req, res, next) => {
+    console.log(`[DEBUG GLOBAL] ${new Date().toISOString()} - Método: ${req.method} | Ruta: ${req.url}`);
+
+    // Si el cuerpo trae datos, imprimir los primeros 300 caracteres
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log(`[DEBUG] Body recibido:`, JSON.stringify(req.body).substring(0, 300) + "...");
+    } else {
+        console.log(`[DEBUG] Sin cuerpo en la petición.`);
+    }
+
+    next();
+});
+
 // Transform recording -> project files (calls OpenAI)
 app.post("/api/transform-recording", async (req, res) => {
   try {
