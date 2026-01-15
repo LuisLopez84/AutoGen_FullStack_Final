@@ -31,30 +31,14 @@ function cleanTextForPDF(text) {
 }
 
 // ==========================================
-// EXPORTACIONES ZAP (SEGURIDAD) - CORREGIDAS
+// FUNCIONES ZAP (SEGURIDAD) - CORREGIDAS
+// Estas funciones son independientes de las de Performance
 // ==========================================
+
 export function generateZapPDF(alerts, url) {
   return new Promise((resolve, reject) => {
     try {
       const alertList = Array.isArray(alerts) ? alerts : [];
-
-      // Validación para evitar errores silenciosos
-      if (alertList.length === 0) {
-        // Creamos un PDF vacío pero válido diciendo que no hubo alertas
-        const doc = new PDFDocument({ margin: 50, size: 'A4' });
-        const chunks = [];
-        doc.on('data', chunk => chunks.push(chunk));
-        doc.on('end', () => resolve(Buffer.concat(chunks)));
-
-        doc.fontSize(18).text('INFORME DE SEGURIDAD', 50, 50);
-        doc.moveDown();
-        doc.fontSize(12).text(`Objetivo: ${url}`);
-        doc.moveDown();
-        doc.fillColor('green').text('Estado: Escaneo completado sin alertas críticas detectadas.');
-        doc.end();
-        return;
-      }
-
       const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: false });
       const chunks = [];
 
@@ -76,7 +60,6 @@ export function generateZapPDF(alerts, url) {
 
       const summary = { High: 0, Medium: 0, Low: 0, Informational: 0 };
       alertList.forEach(a => {
-        // Soporte para claves ZAP estándar y custom
         const risk = a.risk || (a.riskdesc ? 'High' : 'Low');
         if (risk && summary[risk] !== undefined) summary[risk]++;
       });
@@ -100,35 +83,31 @@ export function generateZapPDF(alerts, url) {
       doc.addPage();
       doc.fillColor('#2c3e50').fontSize(20).text('DETALLE DE VULNERABILIDADES', 50, 50);
       doc.moveDown(20);
-      yPos = doc.y;
+
+      yPos = doc.y; // Reiniciar posición Y al inicio de la página
 
       alertList.forEach((alert, index) => {
         if (yPos > 700) { doc.addPage(); yPos = 50; }
 
-        // Normalización de datos (Clave: Soporta 'alert' de ZAP y 'name' de otros formatos)
+        // Normalización de datos
         const alertName = alert.alert || alert.name || 'Sin nombre';
         const riskLevel = alert.risk || 'Unknown';
         const color = riskLevel === 'High' ? '#c0392b' : riskLevel === 'Medium' ? '#e67e22' : riskLevel === 'Low' ? '#f1c40f' : '#3498db';
 
-        // Caja de la alerta
         doc.rect(50, yPos, doc.page.width - 100, 80).lineWidth(1).stroke(color);
 
-        // Nombre
         const name = cleanTextForPDF(alertName);
         doc.fillColor(color).fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${name}`, 60, yPos + 5);
 
-        // URL
         const urlAlert = alert.url || alert.uri || 'N/A';
         doc.fillColor('#333').fontSize(10).font('Helvetica')
            .text(`URL: ${urlAlert}`, 60, yPos + 20, { width: doc.page.width - 120, ellipsis: true });
 
-        // Descripción
         if (alert.description) {
             const desc = cleanTextForPDF(alert.description).substring(0, 150);
             doc.text(`Desc: ${desc}...`, 60, yPos + 35, { width: doc.page.width - 120 });
         }
 
-        // Solución
         const solutionText = alert.solution || alert.solutionDesc || '';
         if (solutionText) {
             const sol = cleanTextForPDF(solutionText).substring(0, 100);
@@ -153,7 +132,7 @@ export function generateZapCSV(alerts) {
         return reject(new Error('No se proporcionaron alertas válidas para el CSV.'));
       }
 
-      // CORRECCIÓN TIPoGRÁFICA: "CONFIDENZA" -> "CONFIANZA"
+      // Header corregido
       const header = ['RIESGO', 'NOMBRE', 'CONFIANZA', 'URL', 'DESCRIPCION', 'SOLUCION'];
       const rows = alerts.map(alert => {
         const escape = (txt) => {
@@ -163,7 +142,7 @@ export function generateZapCSV(alerts) {
 
         return [
             escape(alert.risk),
-            escape(alert.name),
+            escape(alert.name || alert.alert), // Soporta ambos formatos
             escape(alert.confidence),
             escape(alert.url),
             escape(cleanTextForPDF(alert.description)),

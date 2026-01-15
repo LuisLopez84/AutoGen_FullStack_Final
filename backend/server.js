@@ -3,13 +3,13 @@
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-
+import { generatePDF, generateCSV, generateZapPDF, generateZapCSV } from './exportUtils.js';
 import { ZapService } from './zapService.js'; // Importar la clase
-import { generateZapPDF, generateZapCSV } from './exportUtils.js'; // Importar utilidades
+//import { generateZapPDF, generateZapCSV } from './exportUtils.js'; // Importar utilidades
 import { normalizePageSpeed } from './pagespeed/normalizePageSpeed.js';
 import { translateToSpanish } from './pagespeed/translateToSpanish.js';
 import { AUDIT_TRANSLATIONS } from './pagespeed/auditTranslations.js';
-import { generatePDF, generateCSV } from './exportUtils.js';
+//import { generatePDF, generateCSV } from './exportUtils.js';
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
@@ -4746,51 +4746,48 @@ app.post('/api/zap/scan', async (req, res) => {
   }
 });
 
+// ==========================================================
+// RUTAS ESPECÍFICAS PARA EXPORTACIÓN SEGURIDAD (ZAP)
+// Estas rutas NO interfieren con Performance
+// ==========================================================
 
-
-// ==========================================
-// RUTAS DE EXPORTACIÓN ZAP (CORRECCIÓN DE RUTA)
-// ==========================================
-
-// Ruta específica para exportar PDF según tus logs: /api/zap/export/pdf
 app.post("/api/zap/export/pdf", async (req, res) => {
   try {
     console.log("📄 [ZAP Export] Generando PDF...");
 
-    // 1. Validar que lleguen datos
-    // El frontend suele enviar { alerts: [], url: "..." } o { data: [] }
+    // Obtener datos del cuerpo
     let alerts = req.body.alerts || req.body.data || [];
-    const url = req.body.url || req.body.analyzedUrl || "N/A";
+    const url = req.body.url || req.body.analyzedUrl || "Objetivo";
 
-    // Convertir a array si no lo es (prevención de errores)
+    // Validación básica
     if (!Array.isArray(alerts)) {
-       console.error("❌ [ZAP Export] Error: 'alerts' no es un array:", alerts);
-       return res.status(400).json({ error: "Los datos de alertas son inválidos." });
+      return res.status(400).json({ error: "Formato de datos inválido: se espera un array." });
     }
 
     if (alerts.length === 0) {
-      console.warn("⚠️ [ZAP Export] No hay alertas para generar el PDF.");
-      // Opcional: Retornar un PDF vacío o error. Aquí retornamos error para evitar confusión.
-      return res.status(400).json({ error: "No hay resultados de análisis para exportar." });
+      // Si no hay alertas, devolver PDF vacío informando estado
+      const pdfBuffer = await generateZapPDF([], url);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="security_report.pdf"');
+      return res.send(pdfBuffer);
     }
 
-    // 2. Generar el buffer del PDF usando la función de utilidades
+    // Generar Buffer PDF
     const pdfBuffer = await generateZapPDF(alerts, url);
 
-    // 3. Enviar el archivo al cliente
+    // Enviar Respuesta
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="seguridad_bbva.pdf"');
+    res.setHeader('Content-Disposition', 'attachment; filename="security_report.pdf"');
     res.send(pdfBuffer);
 
-    console.log("✅ [ZAP Export] PDF enviado correctamente.");
+    console.log("✅ [ZAP Export] PDF enviado.");
 
   } catch (error) {
-    console.error("❌ [ZAP Export] Error interno:", error.message);
-    res.status(500).json({ error: "Error al generar el PDF en el servidor." });
+    console.error("❌ [ZAP Export] Error:", error);
+    res.status(500).json({ error: "Error interno generando el PDF", details: error.message });
   }
 });
 
-// Ruta específica para exportar CSV según tus logs: /api/zap/export/csv
 app.post("/api/zap/export/csv", async (req, res) => {
   try {
     console.log("📊 [ZAP Export] Generando CSV...");
@@ -4798,27 +4795,29 @@ app.post("/api/zap/export/csv", async (req, res) => {
     let alerts = req.body.alerts || req.body.data || [];
 
     if (!Array.isArray(alerts)) {
-       return res.status(400).json({ error: "Los datos de alertas son inválidos." });
+      return res.status(400).json({ error: "Formato de datos inválido." });
     }
 
     if (alerts.length === 0) {
-      return res.status(400).json({ error: "No hay resultados para exportar." });
+       return res.status(400).json({ error: "No hay alertas para exportar." });
     }
 
     const csvBuffer = await generateZapCSV(alerts);
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="seguridad_bbva.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="security_data.csv"');
     res.send(csvBuffer);
 
-    console.log("✅ [ZAP Export] CSV enviado correctamente.");
+    console.log("✅ [ZAP Export] CSV enviado.");
 
   } catch (error) {
-    console.error("❌ [ZAP Export] Error interno:", error.message);
-    res.status(500).json({ error: "Error al generar el CSV en el servidor." });
+    console.error("❌ [ZAP Export] Error:", error);
+    res.status(500).json({ error: "Error interno generando el CSV", details: error.message });
   }
 });
 
 
 
-    app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));
+
+
+app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));
