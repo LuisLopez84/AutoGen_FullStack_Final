@@ -4746,116 +4746,79 @@ app.post('/api/zap/scan', async (req, res) => {
   }
 });
 
-// Ruta para exportar PDF
-app.post('/api/zap/export/pdf', async (req, res) => {
+
+
+// ==========================================
+// RUTAS DE EXPORTACIÓN ZAP (CORRECCIÓN DE RUTA)
+// ==========================================
+
+// Ruta específica para exportar PDF según tus logs: /api/zap/export/pdf
+app.post("/api/zap/export/pdf", async (req, res) => {
   try {
-    const { alerts, url } = req.body;
+    console.log("📄 [ZAP Export] Generando PDF...");
+
+    // 1. Validar que lleguen datos
+    // El frontend suele enviar { alerts: [], url: "..." } o { data: [] }
+    let alerts = req.body.alerts || req.body.data || [];
+    const url = req.body.url || req.body.analyzedUrl || "N/A";
+
+    // Convertir a array si no lo es (prevención de errores)
+    if (!Array.isArray(alerts)) {
+       console.error("❌ [ZAP Export] Error: 'alerts' no es un array:", alerts);
+       return res.status(400).json({ error: "Los datos de alertas son inválidos." });
+    }
+
+    if (alerts.length === 0) {
+      console.warn("⚠️ [ZAP Export] No hay alertas para generar el PDF.");
+      // Opcional: Retornar un PDF vacío o error. Aquí retornamos error para evitar confusión.
+      return res.status(400).json({ error: "No hay resultados de análisis para exportar." });
+    }
+
+    // 2. Generar el buffer del PDF usando la función de utilidades
     const pdfBuffer = await generateZapPDF(alerts, url);
 
+    // 3. Enviar el archivo al cliente
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=zap_scan_${Date.now()}.pdf`);
+    res.setHeader('Content-Disposition', 'attachment; filename="seguridad_bbva.pdf"');
     res.send(pdfBuffer);
+
+    console.log("✅ [ZAP Export] PDF enviado correctamente.");
+
   } catch (error) {
-    res.status(500).json({ error: 'Error generando PDF' });
+    console.error("❌ [ZAP Export] Error interno:", error.message);
+    res.status(500).json({ error: "Error al generar el PDF en el servidor." });
   }
 });
 
-// Ruta para exportar CSV
-app.post('/api/zap/export/csv', async (req, res) => {
+// Ruta específica para exportar CSV según tus logs: /api/zap/export/csv
+app.post("/api/zap/export/csv", async (req, res) => {
   try {
-    const { alerts } = req.body;
+    console.log("📊 [ZAP Export] Generando CSV...");
+
+    let alerts = req.body.alerts || req.body.data || [];
+
+    if (!Array.isArray(alerts)) {
+       return res.status(400).json({ error: "Los datos de alertas son inválidos." });
+    }
+
+    if (alerts.length === 0) {
+      return res.status(400).json({ error: "No hay resultados para exportar." });
+    }
+
     const csvBuffer = await generateZapCSV(alerts);
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=zap_scan_${Date.now()}.csv`);
+    res.setHeader('Content-Disposition', 'attachment; filename="seguridad_bbva.csv"');
     res.send(csvBuffer);
+
+    console.log("✅ [ZAP Export] CSV enviado correctamente.");
+
   } catch (error) {
-    res.status(500).json({ error: 'Error generando CSV' });
+    console.error("❌ [ZAP Export] Error interno:", error.message);
+    res.status(500).json({ error: "Error al generar el CSV en el servidor." });
   }
 });
 
-
-
-// ==========================================
-// ENDPOINTS DE EXPORTACIÓN ZAP (CORREGIDOS)
-// ==========================================
-app.post("/api/zap/pdf", async (req, res) => {
-  try {
-    console.log("🔍 [DEBUG] Petición recibida en /api/zap/pdf");
-    console.log("📦 [DEBUG] Cuerpo de la petición (Body):", JSON.stringify(req.body).substring(0, 200) + "...");
-
-    // Extracción inteligente de datos
-    // Intenta buscar la propiedad 'alerts', si no encuentra 'data', si no, usa todo el body si es un array.
-    let alerts = req.body.alerts || req.body.data || req.body;
-    const url = req.body.url || req.body.analyzedUrl || 'Objetivo Desconocido';
-
-    // Si no es array, intentar parsear string u otras estructuras
-    if (!Array.isArray(alerts)) {
-      console.error("⚠️ [DEBUG] 'alerts' no es un array. Tipo:", typeof alerts);
-      return res.status(400).json({
-        error: "Formato de datos inválido. Se esperaba un array de alertas."
-      });
-    }
-
-    console.log(`✅ [DEBUG] Procesando ${alerts.length} alertas para PDF...`);
-
-    // Generar PDF
-    const pdfBuffer = await generateZapPDF(alerts, url);
-
-    // Enviar respuesta
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': 'attachment; filename="security_scan_report.pdf"',
-      'Content-Length': pdfBuffer.length
-    });
-
-    res.send(pdfBuffer);
-    console.log("📤 PDF enviado exitosamente.");
-
-  } catch (error) {
-    console.error("❌ Error grave en endpoint /api/zap/pdf:", error);
-    res.status(500).json({
-      error: "Error interno del servidor generando el PDF",
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-
-app.post("/api/zap/csv", async (req, res) => {
-  try {
-    console.log("🔍 [DEBUG] Petición recibida en /api/zap/csv");
-
-    // Extracción inteligente
-    let alerts = req.body.alerts || req.body.data || req.body;
-
-    if (!Array.isArray(alerts)) {
-       return res.status(400).json({
-        error: "Formato de datos inválido. Se esperaba un array de alertas."
-      });
-    }
-
-    console.log(`✅ [DEBUG] Procesando ${alerts.length} alertas para CSV...`);
-
-    const csvBuffer = await generateZapCSV(alerts);
-
-    res.set({
-      'Content-Type': 'text/csv',
-      'Content-Disposition': 'attachment; filename="security_scan_data.csv"',
-      'Content-Length': csvBuffer.length
-    });
-
-    res.send(csvBuffer);
-    console.log("📤 CSV enviado exitosamente.");
-
-  } catch (error) {
-    console.error("❌ Error grave en endpoint /api/zap/csv:", error);
-    res.status(500).json({
-      error: "Error interno del servidor generando el CSV",
-      details: error.message
-    });
-  }
-});
 
 
     app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));

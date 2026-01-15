@@ -36,10 +36,23 @@ function cleanTextForPDF(text) {
 export function generateZapPDF(alerts, url) {
   return new Promise((resolve, reject) => {
     try {
-      // Validación robusta
       const alertList = Array.isArray(alerts) ? alerts : [];
+
+      // Validación para evitar errores silenciosos
       if (alertList.length === 0) {
-        return reject(new Error('La lista de alertas está vacía o es inválida.'));
+        // Creamos un PDF vacío pero válido diciendo que no hubo alertas
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+        doc.fontSize(18).text('INFORME DE SEGURIDAD', 50, 50);
+        doc.moveDown();
+        doc.fontSize(12).text(`Objetivo: ${url}`);
+        doc.moveDown();
+        doc.fillColor('green').text('Estado: Escaneo completado sin alertas críticas detectadas.');
+        doc.end();
+        return;
       }
 
       const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: false });
@@ -62,10 +75,9 @@ export function generateZapPDF(alerts, url) {
       doc.moveDown(20);
 
       const summary = { High: 0, Medium: 0, Low: 0, Informational: 0 };
-
       alertList.forEach(a => {
         // Soporte para claves ZAP estándar y custom
-        const risk = a.risk || (a.riskdesc ? 'High' : 'Low'); // Fallback si risk viene en string descriptivo
+        const risk = a.risk || (a.riskdesc ? 'High' : 'Low');
         if (risk && summary[risk] !== undefined) summary[risk]++;
       });
 
@@ -88,21 +100,20 @@ export function generateZapPDF(alerts, url) {
       doc.addPage();
       doc.fillColor('#2c3e50').fontSize(20).text('DETALLE DE VULNERABILIDADES', 50, 50);
       doc.moveDown(20);
-
-      yPos = doc.y; // Reiniciar posición Y
+      yPos = doc.y;
 
       alertList.forEach((alert, index) => {
         if (yPos > 700) { doc.addPage(); yPos = 50; }
 
-        // Normalización de datos (Soporta formato ZAP puro y formato custom)
-        const alertName = alert.alert || alert.name || 'Sin nombre'; // ZAP usa 'alert', nosotros usabamos 'name'
+        // Normalización de datos (Clave: Soporta 'alert' de ZAP y 'name' de otros formatos)
+        const alertName = alert.alert || alert.name || 'Sin nombre';
         const riskLevel = alert.risk || 'Unknown';
         const color = riskLevel === 'High' ? '#c0392b' : riskLevel === 'Medium' ? '#e67e22' : riskLevel === 'Low' ? '#f1c40f' : '#3498db';
 
         // Caja de la alerta
         doc.rect(50, yPos, doc.page.width - 100, 80).lineWidth(1).stroke(color);
 
-        // Nombre (Con corrección de clave)
+        // Nombre
         const name = cleanTextForPDF(alertName);
         doc.fillColor(color).fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${name}`, 60, yPos + 5);
 
@@ -117,7 +128,7 @@ export function generateZapPDF(alerts, url) {
             doc.text(`Desc: ${desc}...`, 60, yPos + 35, { width: doc.page.width - 120 });
         }
 
-        // Solución (Soporta 'solution' o 'solutionDesc' de ZAP)
+        // Solución
         const solutionText = alert.solution || alert.solutionDesc || '';
         if (solutionText) {
             const sol = cleanTextForPDF(solutionText).substring(0, 100);
