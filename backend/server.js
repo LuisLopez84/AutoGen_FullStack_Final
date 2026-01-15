@@ -2843,26 +2843,65 @@ function processPageSpeedData(rawData, url, strategy) {
       };
     });
 
-    // 3. Métricas Core (Solo las esenciales)
-    const coreMetricIds = ['largest-contentful-paint', 'cumulative-layout-shift', 'total-blocking-time', 'first-contentful-paint'];
-    const metricsItems = [];
+        // 3. Métricas Core (DEBUG + RESPALDO ROBUSTO)
+        // ==========================================================
+        const metricsItems = [];
 
-    if (lighthouse.audits) {
-      coreMetricIds.forEach(mid => {
-        const audit = lighthouse.audits[mid];
-        if (audit) {
-          metricsItems.push({
-            id: mid,
-            title: audit.title,
-            description: audit.description,
-            displayValue: audit.displayValue,
-            numericValue: audit.numericValue,
-            numericUnit: audit.numericUnit,
-            score: audit.score
+        // --- A. DEPURACIÓN: Verificar qué claves envía Google ---
+        console.log("🔍 [DEBUG] Keys disponibles en lighthouse.audits:", Object.keys(lighthouse.audits || {}));
+
+        if (lighthouse.audits) {
+          // Intentar 1 con IDs conocidos (los más comunes)
+          const coreMetricIds = [
+            'largest-contentful-paint',
+            'cumulative-layout-shift',
+            'total-blocking-time',
+            'first-contentful-paint',
+            'speed-index',
+            'max-potential-fid',
+            'interaction-to-next-paint'
+          ];
+
+          coreMetricIds.forEach(mid => {
+            const audit = lighthouse.audits[mid];
+            // Validar que exista la auditoría y tenga valor numérico o displayValue
+            if (audit && (audit.numericValue !== undefined || audit.displayValue)) {
+                 metricsItems.push({
+                    id: mid,
+                    title: audit.title,
+                    description: audit.description,
+                    displayValue: audit.displayValue,
+                    numericValue: audit.numericValue,
+                    numericUnit: audit.numericUnit,
+                    score: audit.score
+                  });
+            }
           });
+
+          // --- B. FALLBACK: Si no se encontraron las métricas clave con IDs específicos...
+          if (metricsItems.length === 0) {
+            console.warn("⚠️ [DEBUG] No se encontraron métricas con IDs estándar. Ejecutando búsqueda de respaldo...");
+
+            // Buscar cualquier auditoría que tenga valores numéricos o displayValue
+            Object.entries(lighthouse.audits || {}).forEach(([key, audit]) => {
+                 // Solo tomar métricas principales para no llenar de basura
+                 if (audit && (audit.numericValue !== undefined || audit.displayValue)) {
+                     // Limitar a 10 para evitar exceso de datos irrelevantes
+                     if (metricsItems.length < 10) {
+                        metricsItems.push({
+                           id: key,
+                           title: audit.title,
+                           description: audit.description,
+                           displayValue: audit.displayValue,
+                           numericValue: audit.numericValue,
+                           numericUnit: audit.numericUnit,
+                           score: audit.score
+                         });
+                     }
+                 }
+            });
+          }
         }
-      });
-    }
 
     // 4. Auditorías (Oportunidades vs Aprobadas)
     const opportunitiesItems = [];
@@ -2963,20 +3002,25 @@ function processPageSpeedData(rawData, url, strategy) {
       });
 
       // 2. MÉTRICAS
-      const metricsItems = [];
-      Object.entries(lighthouse.audits || {}).forEach(([key, audit]) => {
-        if (audit.numericValue !== undefined || audit.displayValue) {
-          metricsItems.push({
-            id: key,
-            title: translateText(audit.title),
-            description: translateText(audit.description || ''),
-            displayValue: audit.displayValue ? translateText(audit.displayValue) : '',
-            numericValue: audit.numericValue,
-            numericUnit: audit.numericUnit,
-            score: audit.score
+          // Convertir a array seguro (ya sea array u objeto)
+          const auditList = Array.isArray(lighthouse.audits)
+            ? lighthouse.audits
+            : Object.values(lighthouse.audits || {}); // <-- CLAVE AQUÍ: Usar Object.values
+
+          // Iterar sobre el array seguro
+          auditList.forEach(audit => {
+            if (audit.numericValue !== undefined || audit.displayValue) {
+              metricsItems.push({
+                id: audit.id,
+                title: audit.title,
+                description: audit.description,
+                displayValue: audit.displayValue ? translateText(audit.displayValue) : '',
+                numericValue: audit.numericValue,
+                numericUnit: audit.numericUnit,
+                score: audit.score
+              });
+            }
           });
-        }
-      });
 
       // 3. AUDITORÍAS (oportunidades y aprobadas)
       const auditsOpportunities = [];
