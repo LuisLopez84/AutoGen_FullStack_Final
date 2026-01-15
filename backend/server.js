@@ -2693,16 +2693,18 @@ function deduplicateDefinitions(definitionsContent) {
     } catch(e){ res.status(500).json({ error: e.message }); }
     });
 
-    // Endpoint para análisis de performance con PageSpeed Insights - VERSIÓN MEJORADA
+    // Endpoint para análisis de performance con PageSpeed Insights - ROBUSTO
     app.post("/api/analyze-performance", async (req, res) => {
       try {
-        const { url, strategy = "mobile" } = req.body;
+        console.log("🚀 [Performance] Iniciando análisis...");
 
+        const { url, strategy = 'mobile' } = req.body;
+
+        // 1. VALIDAR URL
         if (!url) {
-          return res.status(400).json({ error: "URL es requerida" });
+          return res.status(400).json({ error: "La URL es obligatoria para el análisis." });
         }
 
-        // Validar URL
         let validatedUrl;
         try {
           validatedUrl = new URL(url);
@@ -2713,48 +2715,34 @@ function deduplicateDefinitions(definitionsContent) {
           return res.status(400).json({ error: "URL inválida. Formato: https://ejemplo.com" });
         }
 
-        console.log(`📊 Analizando performance completo de: ${url} (${strategy})`);
-
-        // Obtener API Key
-        let apiKey = process.env.PAGESPEED_API_KEY || "";
-
+        // 2. VALIDAR API KEY
+        let apiKey = process.env.PAGESPEED_API_KEY;
         if (!apiKey || apiKey.trim() === '') {
-          return res.status(400).json({
-            error: "API Key de PageSpeed no configurada",
+          console.error("❌ [Performance] Error Crítico: PAGESPEED_API_KEY no está configurada en .env");
+          return res.status(500).json({
+            error: "Configuración del servidor: Falta la API Key de PageSpeed.",
             code: "MISSING_API_KEY",
-            instructions: "Configura PAGESPEED_API_KEY en el archivo .env"
+            suggestion: "Verifica el archivo backend/.env y asegúrate de que la línea PAGESPEED_API_KEY exista y tenga valor."
           });
         }
 
-        // Parámetros para obtener TODOS los datos
-        const params = new URLSearchParams({
-          url: validatedUrl.toString(),
-          strategy: strategy,
-          category: 'performance',
-          category: 'accessibility',
-          category: 'best-practices',
-          category: 'seo',
-          category: 'pwa'
-        });
+        console.log(`📊 [Performance] Analizando: ${validatedUrl.toString()} (${strategy})`);
+        console.log(`🔑 [Performance] Usando API Key: ${apiKey.substring(0, 10)}...`);
 
-        params.append('key', apiKey);
+        // 3. CONSTRUIR URL DE LA API DE GOOGLE (v5)
+        const encodedUrl = encodeURIComponent(validatedUrl.toString());
+        const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodedUrl}&key=${apiKey}&strategy=${strategy}&locale=es`;
 
-        // URL de la API
-        const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params.toString()}`;
-
-        // Headers
-        const headers = {
-          'Accept': 'application/json',
-          'User-Agent': 'AutoGen-Performance-Analyzer/1.0'
-        };
-
-        // Hacer la solicitud con timeout
+        // 4. HACER LA PETICIÓN A GOOGLE
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 segundos de timeout
 
         try {
           const response = await fetch(apiUrl, {
-            headers: headers,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'AutoGen-Performance-Analyzer/1.0'
+            },
             signal: controller.signal
           });
 
@@ -2764,23 +2752,33 @@ function deduplicateDefinitions(definitionsContent) {
             const status = response.status;
             const errorText = await response.text();
 
-            if (status === 429) {
-              return res.status(429).json({
-                error: "Límite de solicitudes alcanzado. Intenta más tarde.",
-                code: "RATE_LIMITED"
+            console.error(`❌ [Performance] Error Google API (${status}):`, errorText.substring(0, 500));
+
+            // Manejo específico para error de autenticación (403) o cuota (429)
+            if (status === 403) {
+              return res.status(500).json({
+                error: "Error de autenticación con Google.",
+                details: "La API Key es inválida o la cuota se ha excedido. Verifica tu clave en Google Cloud Console."
+              });
+            } else if (status === 429) {
+              return res.status(500).json({
+                error: "Límite de cuota alcanzado.",
+                details: "Has excedido la cuota diaria de la API de PageSpeed. Intenta más tarde."
               });
             }
 
-            console.error(`Error ${status} de PageSpeed API:`, errorText.substring(0, 500));
             throw new Error(`PageSpeed API error: ${status}`);
           }
 
           const data = await response.json();
 
-          // Procesar TODOS los datos de manera estructurada
-          const processedData = processPageSpeedData(data, validatedUrl.toString(), strategy);
+          // 5. PROCESAR DATOS (Usando tus funciones existentes importadas)
+          const normalized = normalizePageSpeed(data);
+          const translated = translateToSpanish(normalized);
 
-          res.json(processedData);
+          console.log("✅ [Performance] Análisis completado.");
+
+          res.json(translated);
 
         } catch (fetchError) {
           clearTimeout(timeoutId);
@@ -2792,12 +2790,10 @@ function deduplicateDefinitions(definitionsContent) {
         }
 
       } catch (err) {
-        console.error("❌ Error en análisis de performance:", err.message);
-
+        console.error("❌ [Performance] Error interno:", err.message);
         res.status(500).json({
-          error: err.message,
-          code: "ANALYSIS_ERROR",
-          suggestion: "Verifica la URL y tu conexión a internet"
+          error: "Error interno analizando performance",
+          details: err.message
         });
       }
     });
