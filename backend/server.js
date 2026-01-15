@@ -4250,61 +4250,80 @@ function deduplicateDefinitions(definitionsContent) {
       }
     });
 
-    // Endpoint para exportar a PDF
-    app.post("/api/zap/export/pdf", async (req, res) => {
-      try {
-        const { scanData, targetUrl } = req.body;
 
-        if (!scanData) {
-          return res.status(400).json({ error: "Datos de escaneo requeridos" });
-        }
+// ==========================================================
+// RUTAS ESPECÍFICAS PARA EXPORTACIÓN SEGURIDAD (ZAP)
+// Estas rutas NO interfieren con Performance
+// ==========================================================
 
-        console.log(`📄 Generando PDF para escaneo de: ${targetUrl}`);
+app.post("/api/zap/export/pdf", async (req, res) => {
+  try {
+    console.log("📄 [ZAP Export] Generando PDF...");
 
-        // Generar PDF similar al de performance pero con datos de seguridad
-        const pdfBuffer = await generateSecurityPDF(scanData, targetUrl);
+    // Obtener datos del cuerpo
+    let alerts = req.body.alerts || req.body.data || [];
+    const url = req.body.url || req.body.analyzedUrl || "Objetivo";
 
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="ZAP_Security_Scan_${Date.now()}.pdf"`
-        );
-        res.setHeader('Content-Length', pdfBuffer.length);
+    // Validación básica
+    if (!Array.isArray(alerts)) {
+      return res.status(400).json({ error: "Formato de datos inválido: se espera un array." });
+    }
 
-        res.send(pdfBuffer);
+    if (alerts.length === 0) {
+      // Si no hay alertas, devolver PDF vacío informando estado
+      const pdfBuffer = await generateZapPDF([], url);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="security_report.pdf"');
+      return res.send(pdfBuffer);
+    }
 
-      } catch (err) {
-        console.error("❌ Error generando PDF de seguridad:", err);
-        res.status(500).json({ error: err.message });
-      }
-    });
+    // Generar Buffer PDF
+    const pdfBuffer = await generateZapPDF(alerts, url);
 
-    // Endpoint para exportar a CSV
-    app.post("/api/zap/export/csv", async (req, res) => {
-      try {
-        const { scanData, targetUrl } = req.body;
+    // Enviar Respuesta
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="security_report.pdf"');
+    res.send(pdfBuffer);
 
-        if (!scanData) {
-          return res.status(400).json({ error: "Datos de escaneo requeridos" });
-        }
+    console.log("✅ [ZAP Export] PDF enviado.");
 
-        console.log(`📊 Generando CSV para escaneo de: ${targetUrl}`);
+  } catch (error) {
+    console.error("❌ [ZAP Export] Error:", error);
+    res.status(500).json({ error: "Error interno generando el PDF", details: error.message });
+  }
+});
 
-        const csvContent = await generateSecurityCSV(scanData, targetUrl);
+app.post("/api/zap/export/csv", async (req, res) => {
+  try {
+    console.log("📊 [ZAP Export] Generando CSV...");
 
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="ZAP_Security_Scan_${Date.now()}.csv"`
-        );
+    let alerts = req.body.alerts || req.body.data || [];
 
-        res.send(csvContent);
+    if (!Array.isArray(alerts)) {
+      return res.status(400).json({ error: "Formato de datos inválido." });
+    }
 
-      } catch (err) {
-        console.error("❌ Error generando CSV de seguridad:", err);
-        res.status(500).json({ error: err.message });
-      }
-    });
+    if (alerts.length === 0) {
+       return res.status(400).json({ error: "No hay alertas para exportar." });
+    }
+
+    const csvBuffer = await generateZapCSV(alerts);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="security_data.csv"');
+    res.send(csvBuffer);
+
+    console.log("✅ [ZAP Export] CSV enviado.");
+
+  } catch (error) {
+    console.error("❌ [ZAP Export] Error:", error);
+    res.status(500).json({ error: "Error interno generando el CSV", details: error.message });
+  }
+});
+
+
+
+
 
     // ========== FUNCIONES AUXILIARES PARA ZAP ==========
 
@@ -4745,79 +4764,5 @@ app.post('/api/zap/scan', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-// ==========================================================
-// RUTAS ESPECÍFICAS PARA EXPORTACIÓN SEGURIDAD (ZAP)
-// Estas rutas NO interfieren con Performance
-// ==========================================================
-
-app.post("/api/zap/export/pdf", async (req, res) => {
-  try {
-    console.log("📄 [ZAP Export] Generando PDF...");
-
-    // Obtener datos del cuerpo
-    let alerts = req.body.alerts || req.body.data || [];
-    const url = req.body.url || req.body.analyzedUrl || "Objetivo";
-
-    // Validación básica
-    if (!Array.isArray(alerts)) {
-      return res.status(400).json({ error: "Formato de datos inválido: se espera un array." });
-    }
-
-    if (alerts.length === 0) {
-      // Si no hay alertas, devolver PDF vacío informando estado
-      const pdfBuffer = await generateZapPDF([], url);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'attachment; filename="security_report.pdf"');
-      return res.send(pdfBuffer);
-    }
-
-    // Generar Buffer PDF
-    const pdfBuffer = await generateZapPDF(alerts, url);
-
-    // Enviar Respuesta
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="security_report.pdf"');
-    res.send(pdfBuffer);
-
-    console.log("✅ [ZAP Export] PDF enviado.");
-
-  } catch (error) {
-    console.error("❌ [ZAP Export] Error:", error);
-    res.status(500).json({ error: "Error interno generando el PDF", details: error.message });
-  }
-});
-
-app.post("/api/zap/export/csv", async (req, res) => {
-  try {
-    console.log("📊 [ZAP Export] Generando CSV...");
-
-    let alerts = req.body.alerts || req.body.data || [];
-
-    if (!Array.isArray(alerts)) {
-      return res.status(400).json({ error: "Formato de datos inválido." });
-    }
-
-    if (alerts.length === 0) {
-       return res.status(400).json({ error: "No hay alertas para exportar." });
-    }
-
-    const csvBuffer = await generateZapCSV(alerts);
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="security_data.csv"');
-    res.send(csvBuffer);
-
-    console.log("✅ [ZAP Export] CSV enviado.");
-
-  } catch (error) {
-    console.error("❌ [ZAP Export] Error:", error);
-    res.status(500).json({ error: "Error interno generando el CSV", details: error.message });
-  }
-});
-
-
-
-
 
 app.listen(PORT, "0.0.0.0", ()=>console.log("Listening", PORT));
