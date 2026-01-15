@@ -132,8 +132,33 @@ export function generateZapCSV(alerts) {
         return reject(new Error('No se proporcionaron alertas válidas para el CSV.'));
       }
 
-      // Header corregido
+      const csvData = [];
+
+      // ==========================================================
+      // 1. SECCIÓN: RESUMEN DE RIESGOS (Ya funcional)
+      // ==========================================================
+
+      const summary = { High: 0, Medium: 0, Low: 0, Informational: 0 };
+      alerts.forEach(a => {
+         if (a.risk && summary[a.risk] !== undefined) {
+             summary[a.risk]++;
+         }
+      });
+
+      csvData.push(['Risk Level', 'Number of Alerts']);
+      csvData.push(['High', summary.High]);
+      csvData.push(['Medium', summary.Medium]);
+      csvData.push(['Low', summary.Low]);
+      csvData.push(['Informational', summary.Informational]);
+      csvData.push([]); // Fila vacía para separar
+
+      // ==========================================================
+      // 2. SECCIÓN DETALLADA: MAPEO FLEXIBLE DE DATOS
+      // ==========================================================
+
       const header = ['RIESGO', 'NOMBRE', 'CONFIANZA', 'URL', 'DESCRIPCION', 'SOLUCION'];
+      csvData.push(header);
+
       const rows = alerts.map(alert => {
         const escape = (txt) => {
             if (!txt) return '""';
@@ -141,17 +166,40 @@ export function generateZapCSV(alerts) {
         };
 
         return [
+            // 1. RIESGO
             escape(alert.risk),
-            escape(alert.name || alert.alert), // Soporta ambos formatos
-            escape(alert.confidence),
-            escape(alert.url),
+
+            // 2. NOMBRE (ZAP usa 'alert', nosotros usabamos 'name'. Ahora buscamos ambos)
+            escape(alert.name || alert.alert || 'Sin Nombre'),
+
+            // 3. CONFIANZA
+            escape(alert.confidence || 'N/A'),
+
+            // 4. URL (ZAP usa 'uri' a veces)
+            escape(alert.url || alert.uri || 'N/A'),
+
+            // 5. DESCRIPCIÓN
+            // cleanTextForPDF limpia caracteres raros pero NO CORTA el texto
             escape(cleanTextForPDF(alert.description)),
-            escape(cleanTextForPDF(alert.solution))
+
+            // 6. SOLUCIÓN (ZAP usa 'solutionDesc' a veces)
+            escape(cleanTextForPDF(alert.solution || alert.solutionDesc || ''))
         ];
       });
 
-      const csvContent = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
+      // Unir resumen + filas de detalle
+      const allRows = [...csvData, ...rows];
+
+      // Convertir a String CSV Correcto
+      const csvContent = allRows.map(row => {
+        return row.map(cell => {
+          const cellStr = String(cell || '');
+          return `"${cellStr.replace(/"/g, '""')}"`;
+        }).join(',');
+      }).join('\n');
+
       resolve(Buffer.from(csvContent, 'utf-8'));
+
     } catch (error) {
       console.error("Error en generateZapCSV:", error);
       reject(error);
