@@ -2825,162 +2825,162 @@ suggestion: "Verifica la URL y tu conexión a internet"
 
 
 // ========== FUNCIÓN PARA PROCESAR DATOS COMPLETOS ==========
-function processPageSpeedData(rawData, url, strategy) {
-const lighthouse = rawData.lighthouseResult;
-const loadingExperience = rawData.loadingExperience;
+    function processPageSpeedData(rawData, url, strategy) {
+      const lighthouse = rawData.lighthouseResult;
+      const loadingExperience = rawData.loadingExperience;
 
-// Procesar categorías traducidas
-const categories = Object.entries(lighthouse.categories || {}).reduce((acc, [key, category]) => {
-const translatedCategory = translateCategory({
-id: key,
-title: category.title,
-description: category.description,
-score: category.score,
-scoreRaw: category.score,
-auditRefs: category.auditRefs || []
-});
+      // Procesar categorías traducidas
+      const categories = Object.entries(lighthouse.categories || {}).reduce((acc, [key, category]) => {
+        const translatedCategory = translateCategory({
+          id: key,
+          title: category.title,
+          description: category.description,
+          score: category.score,
+          scoreRaw: category.score,
+          auditRefs: category.auditRefs || []
+        });
 
-acc[key] = {
-...translatedCategory,
-id: key, // Asegurar que exista el id
-score: Math.round((category.score || 0) * 100),
-label: getScoreLabel(category.score || 0)
-};
-return acc;
-}, {});
+        acc[key] = {
+          ...translatedCategory,
+          id: key, // Asegurar que exista el id
+          score: Math.round((category.score || 0) * 100),
+          label: getScoreLabel(category.score || 0)
+        };
+        return acc;
+      }, {});
 
-// Procesar métricas traducidas
-const metrics = {
-performance: {}
-};
+      // Procesar métricas traducidas
+      const metrics = {
+        performance: {}
+      };
 
-// Procesar TODAS las auditorías como métricas para el PDF
-if (lighthouse.audits) {
-Object.entries(lighthouse.audits).forEach(([key, audit]) => {
-if (audit.numericValue !== undefined || audit.displayValue) {
-metrics.performance[key] = {
-id: key,
-...translateAudit({
-title: audit.title,
-description: audit.description,
-displayValue: audit.displayValue,
-score: audit.score,
-numericValue: audit.numericValue,
-numericUnit: audit.numericUnit
-})
-};
-}
-});
-}
+      // Procesar TODAS las auditorías como métricas para el PDF
+      if (lighthouse.audits) {
+        Object.entries(lighthouse.audits).forEach(([key, audit]) => {
+          if (audit.numericValue !== undefined || audit.displayValue) {
+            metrics.performance[key] = {
+              id: key,
+              ...translateAudit({
+                title: audit.title,
+                description: audit.description,
+                displayValue: audit.displayValue,
+                score: audit.score,
+                numericValue: audit.numericValue,
+                numericUnit: audit.numericUnit
+              })
+            };
+          }
+        });
+      }
 
-// Procesar auditorías para el PDF
-const allAudits = Object.entries(lighthouse.audits || {});
+      // Procesar auditorías para el PDF
+      const allAudits = Object.entries(lighthouse.audits || {});
 
-const passed = allAudits
-.filter(([_, audit]) => audit.score === 1 || audit.score === null)
-.reduce((acc, [key, audit]) => {
-acc[key] = translateAudit(audit);
-return acc;
-}, {});
+      const passed = allAudits
+        .filter(([_, audit]) => audit.score === 1 || audit.score === null)
+        .reduce((acc, [key, audit]) => {
+          acc[key] = translateAudit(audit);
+          return acc;
+        }, {});
 
-const opportunities = allAudits
-.filter(([_, audit]) => audit.score !== null && audit.score < 1)
-.reduce((acc, [key, audit]) => {
-acc[key] = translateAudit(audit);
-return acc;
-}, {});
+      const opportunities = allAudits
+        .filter(([_, audit]) => audit.score !== null && audit.score < 1)
+        .reduce((acc, [key, audit]) => {
+          acc[key] = translateAudit(audit);
+          return acc;
+        }, {});
 
-const informational = allAudits
-.filter(([_, audit]) => audit.score === null)
-.reduce((acc, [key, audit]) => {
-acc[key] = translateAudit(audit);
-return acc;
-}, {});
+      const informational = allAudits
+        .filter(([_, audit]) => audit.score === null)
+        .reduce((acc, [key, audit]) => {
+          acc[key] = translateAudit(audit);
+          return acc;
+        }, {});
 
-// Procesar diagnósticos CORREGIDO
-const diagnostics = Object.entries(lighthouse.audits || {})
-.filter(([key, audit]) =>
-audit.score !== null &&
-audit.score < 1 &&
-audit.details &&
-audit.details.type === 'opportunity'
-)
-.map(([key, audit]) => {
-const severity = audit.score >= 0.9 ? 'BAJA' :
-audit.score >= 0.5 ? 'MEDIA' : 'ALTA';
+      // Procesar diagnósticos CORREGIDO
+      const diagnostics = Object.entries(lighthouse.audits || {})
+        .filter(([key, audit]) =>
+          audit.score !== null &&
+          audit.score < 1 &&
+          audit.details &&
+          audit.details.type === 'opportunity'
+        )
+        .map(([key, audit]) => {
+          const severity = audit.score >= 0.9 ? 'BAJA' :
+                          audit.score >= 0.5 ? 'MEDIA' : 'ALTA';
 
-return {
-id: key,
-title: translateText(audit.title || 'Sin título'),
-description: translateText(audit.description || 'Sin descripción'),
-displayValue: audit.displayValue || 'No disponible',
-score: audit.score,
-severity: severity,
-impact: 'ALTO'
-};
-});
+          return {
+            id: key,
+            title: translateText(audit.title || 'Sin título'),
+            description: translateText(audit.description || 'Sin descripción'),
+            displayValue: audit.displayValue || 'No disponible',
+            score: audit.score,
+            severity: severity,
+            impact: 'ALTO'
+          };
+        });
 
-// Generar recomendaciones COMPLETAS en español
-const recommendations = generateCompleteSpanishRecommendations(lighthouse.audits, diagnostics);
+      // Generar recomendaciones COMPLETAS en español
+      const recommendations = generateCompleteSpanishRecommendations(lighthouse.audits, diagnostics);
 
-// Procesar experiencia de carga CORREGIDO
-let translatedLoadingExp = null;
-if (loadingExperience) {
-translatedLoadingExp = {
-overall_category: translateText(loadingExperience.overall_category || 'UNKNOWN'),
-metrics: {}
-};
+      // Procesar experiencia de carga CORREGIDO
+      let translatedLoadingExp = null;
+      if (loadingExperience) {
+        translatedLoadingExp = {
+          overall_category: translateText(loadingExperience.overall_category || 'UNKNOWN'),
+          metrics: {}
+        };
 
-if (loadingExperience.metrics) {
-Object.entries(loadingExperience.metrics).forEach(([key, metric]) => {
-translatedLoadingExp.metrics[key] = {
-...metric,
-category: translateText(metric.category || 'UNKNOWN')
-};
-});
-}
-}
+        if (loadingExperience.metrics) {
+          Object.entries(loadingExperience.metrics).forEach(([key, metric]) => {
+            translatedLoadingExp.metrics[key] = {
+              ...metric,
+              category: translateText(metric.category || 'UNKNOWN')
+            };
+          });
+        }
+      }
 
-return {
-success: true,
-url: url,
-strategy: strategy,
-strategyLabel: strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio',
-fetchTime: lighthouse.fetchTime || new Date().toISOString(),
-fecha: new Date().toLocaleDateString('es-ES', {
-day: '2-digit',
-month: '2-digit',
-year: 'numeric',
-hour: '2-digit',
-minute: '2-digit'
-}),
+      return {
+        success: true,
+        url: url,
+        strategy: strategy,
+        strategyLabel: strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio',
+        fetchTime: lighthouse.fetchTime || new Date().toISOString(),
+        fecha: new Date().toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
 
-// Datos traducidos y estructurados para PDF
-categories,
-metrics: {
-performance: {
-items: Object.values(metrics.performance)
-}
-},
-audits: {
-passed,
-opportunities,
-informational
-},
-diagnostics: diagnostics || [], // Asegurar array
-recommendations: recommendations || [], // Asegurar array
-loadingExperience: translatedLoadingExp,
+        // Datos traducidos y estructurados para PDF
+        categories,
+        metrics: {
+          performance: {
+            items: Object.values(metrics.performance)
+          }
+        },
+        audits: {
+          passed,
+          opportunities,
+          informational
+        },
+        diagnostics: diagnostics || [], // Asegurar array
+        recommendations: recommendations || [], // Asegurar array
+        loadingExperience: translatedLoadingExp,
 
-// Estadísticas resumen
-summary: {
-totalAudits: allAudits.length,
-passedAudits: Object.keys(passed).length,
-opportunities: Object.keys(opportunities).length,
-diagnosticsCount: diagnostics.length,
-performanceScore: Math.round((lighthouse.categories?.performance?.score || 0) * 100)
-}
-};
-}
+        // Estadísticas resumen
+        summary: {
+          totalAudits: allAudits.length,
+          passedAudits: Object.keys(passed).length,
+          opportunities: Object.keys(opportunities).length,
+          diagnosticsCount: diagnostics.length,
+          performanceScore: Math.round((lighthouse.categories?.performance?.score || 0) * 100)
+        }
+      };
+    }
 
     // ========== FUNCIÓN ESPECÍFICA PARA DATOS DE PDF ==========
     function prepareDataForPDF(pageSpeedData, url, strategy) {
