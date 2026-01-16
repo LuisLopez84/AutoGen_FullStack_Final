@@ -2711,6 +2711,8 @@ function deduplicateDefinitions(definitionsContent) {
     } catch(e){ res.status(500).json({ error: e.message }); }
     });
 
+
+
 // Endpoint para análisis de performance con PageSpeed Insights - VERSIÓN MEJORADA
 app.post("/api/analyze-performance", async (req, res) => {
 try {
