@@ -2748,9 +2748,9 @@ instructions: "Configura PAGESPEED_API_KEY en el archivo .env"
 const params = new URLSearchParams({
 url: validatedUrl.toString(),
 strategy: strategy,
-category: 'performance',
-category: 'accessibility',
-category: 'best-practices',
+category: 'Rendimiento',
+category: 'Accesibilidad',
+category: 'Buenas practicas',
 category: 'seo',
 category: 'pwa'
 });
@@ -2820,174 +2820,164 @@ suggestion: "Verifica la URL y tu conexión a internet"
 }
 });
 
-// ==========================================================
-// FUNCIÓN PROCESADORA DE DATOS (SIMPLIFICADA Y ROBUSTA)
-// Reemplaza la versión anterior pesada con esta.
-// Esto evita que el servidor se cuelgue.
-// ==========================================================
+
+
+// ========== FUNCIÓN PARA PROCESAR DATOS COMPLETOS ==========
 function processPageSpeedData(rawData, url, strategy) {
-  console.log("🔄 [ProcessData] Iniciando procesamiento simplificado...");
+const lighthouse = rawData.lighthouseResult;
+const loadingExperience = rawData.loadingExperience;
 
-  try {
-    // 1. Extraer Lighthouse
-    const lighthouse = rawData.lighthouseResult;
+// Procesar categorías traducidas
+const categories = Object.entries(lighthouse.categories || {}).reduce((acc, [key, category]) => {
+const translatedCategory = translateCategory({
+id: key,
+title: category.title,
+description: category.description,
+score: category.score,
+scoreRaw: category.score,
+auditRefs: category.auditRefs || []
+});
 
-    if (!lighthouse) {
-      throw new Error("Estructura de datos inválida: Falta lighthouseResult");
-    }
+acc[key] = {
+...translatedCategory,
+id: key, // Asegurar que exista el id
+score: Math.round((category.score || 0) * 100),
+label: getScoreLabel(category.score || 0)
+};
+return acc;
+}, {});
 
-    // 2. Categorías (Mapeo directo, sin traducción pesada)
-    const categories = {};
-    Object.keys(lighthouse.categories || {}).forEach(key => {
-      const cat = lighthouse.categories[key];
-      categories[key] = {
-        id: key,
-        title: cat.title,
-        score: Math.round((cat.score || 0) * 100),
-        description: cat.description || ''
-      };
-    });
+// Procesar métricas traducidas
+const metrics = {
+performance: {}
+};
 
-        // 3. Métricas Core (DEBUG + RESPALDO ROBUSTO)
-        // ==========================================================
-        const metricsItems = [];
+// Procesar TODAS las auditorías como métricas para el PDF
+if (lighthouse.audits) {
+Object.entries(lighthouse.audits).forEach(([key, audit]) => {
+if (audit.numericValue !== undefined || audit.displayValue) {
+metrics.performance[key] = {
+id: key,
+...translateAudit({
+title: audit.title,
+description: audit.description,
+displayValue: audit.displayValue,
+score: audit.score,
+numericValue: audit.numericValue,
+numericUnit: audit.numericUnit
+})
+};
+}
+});
+}
 
-        // --- A. DEPURACIÓN: Verificar qué claves envía Google ---
-        console.log("🔍 [DEBUG] Keys disponibles en lighthouse.audits:", Object.keys(lighthouse.audits || {}));
+// Procesar auditorías para el PDF
+const allAudits = Object.entries(lighthouse.audits || {});
 
-        if (lighthouse.audits) {
-          // Intentar 1 con IDs conocidos (los más comunes)
-          const coreMetricIds = [
-            'largest-contentful-paint',
-            'cumulative-layout-shift',
-            'total-blocking-time',
-            'first-contentful-paint',
-            'speed-index',
-            'max-potential-fid',
-            'interaction-to-next-paint'
-          ];
+const passed = allAudits
+.filter(([_, audit]) => audit.score === 1 || audit.score === null)
+.reduce((acc, [key, audit]) => {
+acc[key] = translateAudit(audit);
+return acc;
+}, {});
 
-          coreMetricIds.forEach(mid => {
-            const audit = lighthouse.audits[mid];
-            // Validar que exista la auditoría y tenga valor numérico o displayValue
-            if (audit && (audit.numericValue !== undefined || audit.displayValue)) {
-                 metricsItems.push({
-                    id: mid,
-                    title: audit.title,
-                    description: audit.description,
-                    displayValue: audit.displayValue,
-                    numericValue: audit.numericValue,
-                    numericUnit: audit.numericUnit,
-                    score: audit.score
-                  });
-            }
-          });
+const opportunities = allAudits
+.filter(([_, audit]) => audit.score !== null && audit.score < 1)
+.reduce((acc, [key, audit]) => {
+acc[key] = translateAudit(audit);
+return acc;
+}, {});
 
-          // --- B. FALLBACK: Si no se encontraron las métricas clave con IDs específicos...
-          if (metricsItems.length === 0) {
-            console.warn("⚠️ [DEBUG] No se encontraron métricas con IDs estándar. Ejecutando búsqueda de respaldo...");
+const informational = allAudits
+.filter(([_, audit]) => audit.score === null)
+.reduce((acc, [key, audit]) => {
+acc[key] = translateAudit(audit);
+return acc;
+}, {});
 
-            // Buscar cualquier auditoría que tenga valores numéricos o displayValue
-            Object.entries(lighthouse.audits || {}).forEach(([key, audit]) => {
-                 // Solo tomar métricas principales para no llenar de basura
-                 if (audit && (audit.numericValue !== undefined || audit.displayValue)) {
-                     // Limitar a 10 para evitar exceso de datos irrelevantes
-                     if (metricsItems.length < 10) {
-                        metricsItems.push({
-                           id: key,
-                           title: audit.title,
-                           description: audit.description,
-                           displayValue: audit.displayValue,
-                           numericValue: audit.numericValue,
-                           numericUnit: audit.numericUnit,
-                           score: audit.score
-                         });
-                     }
-                 }
-            });
-          }
-        }
+// Procesar diagnósticos CORREGIDO
+const diagnostics = Object.entries(lighthouse.audits || {})
+.filter(([key, audit]) =>
+audit.score !== null &&
+audit.score < 1 &&
+audit.details &&
+audit.details.type === 'opportunity'
+)
+.map(([key, audit]) => {
+const severity = audit.score >= 0.9 ? 'BAJA' :
+audit.score >= 0.5 ? 'MEDIA' : 'ALTA';
 
-    // 4. Auditorías (Oportunidades vs Aprobadas)
-    const opportunitiesItems = [];
-    const passedItems = [];
+return {
+id: key,
+title: translateText(audit.title || 'Sin título'),
+description: translateText(audit.description || 'Sin descripción'),
+displayValue: audit.displayValue || 'No disponible',
+score: audit.score,
+severity: severity,
+impact: 'ALTO'
+};
+});
 
-    if (lighthouse.audits) {
-      Object.entries(lighthouse.audits).forEach(([key, audit]) => {
-        if (audit.score !== null && audit.score < 0.9) {
-          opportunitiesItems.push({
-            id: key,
-            title: audit.title,
-            description: audit.description,
-            displayValue: audit.displayValue,
-            score: audit.score
-          });
-        } else if (audit.score !== null) {
-          passedItems.push({
-            id: key,
-            title: audit.title,
-            description: audit.description,
-            displayValue: audit.displayValue,
-            score: audit.score
-          });
-        }
-      });
-    }
+// Generar recomendaciones COMPLETAS en español
+const recommendations = generateCompleteSpanishRecommendations(lighthouse.audits, diagnostics);
 
-    // 5. Diagnósticos y Recomendaciones (Generales para no bloquear)
-    const diagnostics = [
-      { id: '1', title: 'Verificar API Key', description: 'Asegurar que la API Key de Google sea válida y esté activa.' },
-      { id: '2', title: 'Revisar Imágenes', description: 'Optimizar el tamaño y formato de las imágenes.' }
-    ];
+// Procesar experiencia de carga CORREGIDO
+let translatedLoadingExp = null;
+if (loadingExperience) {
+translatedLoadingExp = {
+overall_category: translateText(loadingExperience.overall_category || 'UNKNOWN'),
+metrics: {}
+};
 
-    const recommendations = [
-      { priority: 'ALTA', title: 'Optimizar Imágenes', description: 'Usar formatos WebP y compresión.' }
-    ];
+if (loadingExperience.metrics) {
+Object.entries(loadingExperience.metrics).forEach(([key, metric]) => {
+translatedLoadingExp.metrics[key] = {
+...metric,
+category: translateText(metric.category || 'UNKNOWN')
+};
+});
+}
+}
 
-    // 6. Estructura Final
-    const result = {
-      success: true,
-      url: url,
-      strategy: strategy,
-      strategyLabel: strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio',
-      fetchTime: lighthouse.fetchTime || new Date().toISOString(),
-      fecha: new Date().toLocaleDateString('es-ES'),
-      categories,
-      metrics: {
-        performance: {
-          items: metricsItems
-        }
-      },
-      audits: {
-        opportunities: { items: opportunitiesItems },
-        passed: { items: passedItems }
-      },
-      diagnostics: diagnostics,
-      recommendations: recommendations,
-      summary: {
-        performanceScore: Math.round((lighthouse.categories?.performance?.score || 0) * 100)
-      }
-    };
+return {
+success: true,
+url: url,
+strategy: strategy,
+strategyLabel: strategy === 'mobile' ? '📱 Móvil' : '🖥️ Escritorio',
+fetchTime: lighthouse.fetchTime || new Date().toISOString(),
+fecha: new Date().toLocaleDateString('es-ES', {
+day: '2-digit',
+month: '2-digit',
+year: 'numeric',
+hour: '2-digit',
+minute: '2-digit'
+}),
 
-    console.log("✅ [ProcessData] Datos procesados y listos para enviar.");
-    return result;
+// Datos traducidos y estructurados para PDF
+categories,
+metrics: {
+performance: {
+items: Object.values(metrics.performance)
+}
+},
+audits: {
+passed,
+opportunities,
+informational
+},
+diagnostics: diagnostics || [], // Asegurar array
+recommendations: recommendations || [], // Asegurar array
+loadingExperience: translatedLoadingExp,
 
-  } catch (err) {
-    console.error("❌ [ProcessData] Error crítico:", err.message);
-    // Retornar datos de emergencia para que el frontend no se cuelgue
-    return {
-      success: false,
-      url: url,
-      strategy: strategy,
-      error: err.message,
-      categories: {},
-      metrics: { performance: { items: [] } },
-      audits: { opportunities: { items: [] }, passed: { items: [] } },
-      diagnostics: [],
-      recommendations: [],
-      summary: { performanceScore: 0 }
-    };
-  }
+// Estadísticas resumen
+summary: {
+totalAudits: allAudits.length,
+passedAudits: Object.keys(passed).length,
+opportunities: Object.keys(opportunities).length,
+diagnosticsCount: diagnostics.length,
+performanceScore: Math.round((lighthouse.categories?.performance?.score || 0) * 100)
+}
+};
 }
 
     // ========== FUNCIÓN ESPECÍFICA PARA DATOS DE PDF ==========
