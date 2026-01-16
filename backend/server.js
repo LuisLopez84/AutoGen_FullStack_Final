@@ -2711,107 +2711,60 @@ function deduplicateDefinitions(definitionsContent) {
     });
 
     // Endpoint para análisis de performance con PageSpeed Insights - ROBUSTO
-    app.post("/api/analyze-performance", async (req, res) => {
+    // ==========================================================
+    // RUTA DE ANÁLISIS DE PERFORMANCE (PAGESPEED)
+    // ==========================================================
+
+    app.post("/api/pagespeed/analyze", async (req, res) => {
       try {
         console.log("🚀 [Performance] Iniciando análisis...");
 
         const { url, strategy = 'mobile' } = req.body;
 
-        // 1. VALIDAR URL
+        // 1. Validar URL
         if (!url) {
           return res.status(400).json({ error: "La URL es obligatoria para el análisis." });
         }
 
-        let validatedUrl;
-        try {
-          validatedUrl = new URL(url);
-          if (!['http:', 'https:'].includes(validatedUrl.protocol)) {
-            return res.status(400).json({ error: "URL debe usar HTTP o HTTPS" });
-          }
-        } catch (e) {
-          return res.status(400).json({ error: "URL inválida. Formato: https://ejemplo.com" });
+        // 2. Validar API Key
+        const apiKey = process.env.PAGESPEED_API_KEY;
+        if (!apiKey) {
+          console.error("❌ [Performance] Falta API Key en .env");
+          return res.status(500).json({ error: "Configuración del servidor: Falta la API Key de PageSpeed." });
         }
 
-        // 2. VALIDAR API KEY
-        let apiKey = process.env.PAGESPEED_API_KEY;
-        if (!apiKey || apiKey.trim() === '') {
-          console.error("❌ [Performance] Error Crítico: PAGESPEED_API_KEY no está configurada en .env");
-          return res.status(500).json({
-            error: "Configuración del servidor: Falta la API Key de PageSpeed.",
-            code: "MISSING_API_KEY",
-            suggestion: "Verifica el archivo backend/.env y asegúrate de que la línea PAGESPEED_API_KEY exista y tenga valor."
-          });
-        }
+        console.log(`📊 [Performance] Analizando: ${url} (${strategy})`);
 
-        console.log(`📊 [Performance] Analizando: ${validatedUrl.toString()} (${strategy})`);
-        console.log(`🔑 [Performance] Usando API Key: ${apiKey.substring(0, 10)}...`);
-
-        // 3. CONSTRUIR URL DE LA API DE GOOGLE (v5)
-        const encodedUrl = encodeURIComponent(validatedUrl.toString());
+        // 3. Construir URL de la API de Google (v5)
+        // Es necesario codificar la URL para que no rompa la consulta
+        const encodedUrl = encodeURIComponent(url);
         const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodedUrl}&key=${apiKey}&strategy=${strategy}&locale=es`;
 
-        // 4. HACER LA PETICIÓN A GOOGLE
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 segundos de timeout
+        // 4. Hacer la petición a Google
+        const response = await fetch(apiUrl);
 
-        try {
-          const response = await fetch(apiUrl, {
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'AutoGen-Performance-Analyzer/1.0'
-            },
-            signal: controller.signal
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ [Performance] Error Google API: ${response.status} - ${errorText}`);
+          return res.status(response.status).json({
+            error: "Error al conectar con Google PageSpeed API",
+            details: `Google respondió con: ${response.status}`
           });
-
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            const status = response.status;
-            const errorText = await response.text();
-
-            console.error(`❌ [Performance] Error Google API (${status}):`, errorText.substring(0, 500));
-
-            // Manejo específico para error de autenticación (403) o cuota (429)
-            if (status === 403) {
-              return res.status(500).json({
-                error: "Error de autenticación con Google.",
-                details: "La API Key es inválida o la cuota se ha excedido. Verifica tu clave en Google Cloud Console."
-              });
-            } else if (status === 429) {
-              return res.status(500).json({
-                error: "Límite de cuota alcanzado.",
-                details: "Has excedido la cuota diaria de la API de PageSpeed. Intenta más tarde."
-              });
-            }
-
-            throw new Error(`PageSpeed API error: ${status}`);
-          }
-
-          const data = await response.json();
-
-          // 5. PROCESAR DATOS (Usando tus funciones existentes importadas)
-          const normalized = normalizePageSpeed(data);
-          const translated = translateToSpanish(normalized);
-
-          console.log("✅ [Performance] Análisis completado.");
-
-          res.json(translated);
-
-        } catch (fetchError) {
-          clearTimeout(timeoutId);
-
-          if (fetchError.name === 'AbortError') {
-            throw new Error("Timeout: La solicitud tardó demasiado (45s)");
-          }
-          throw fetchError;
         }
 
-      } catch (err) {
-        console.error("❌ [Performance] Error interno:", err.message);
-        res.status(500).json({
-          error: "Error interno analizando performance",
-          details: err.message
-        });
+        const data = await response.json();
+
+        // 5. Normalizar datos para el formato de la app
+        const normalized = normalizePageSpeed(data);
+        const translated = translateToSpanish(normalized);
+
+        console.log("✅ [Performance] Análisis completado.");
+
+        res.json(translated);
+
+      } catch (error) {
+        console.error("❌ [Performance] Error interno:", error.message);
+        res.status(500).json({ error: "Error interno analizando performance", details: error.message });
       }
     });
 
