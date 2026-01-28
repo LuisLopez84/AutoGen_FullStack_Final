@@ -3,10 +3,10 @@ import RecorderGuide from "./components/RecorderGuide.jsx";
 import RecordingUploader from "./components/RecordingUploader.jsx";
 import TransformPanel from "./components/TransformPanel.jsx";
 import RecorderPanel from "./components/RecorderPanel.jsx";
-import PerformanceAnalyzerSpanish from "./components/PerformanceAnalyzerSpanish.jsx";
+import PerformanceAnalyzerSpanish from "./components/PerformanceAnalyzerSpanish.jsx"; // <-- NUEVO IMPORT
 import "./App.css";
 import SecurityScanner from './components/SecurityScanner';
-import PlaywrightBDD from './components/PlaywrightBDD';
+import PlaywrightBDDPOM from './components/PlaywrightBDDPOM.jsx';
 
 const BACKEND = import.meta.env.VITE_BACKEND_BASE || "http://localhost:3000";
 
@@ -42,6 +42,7 @@ export default function App(){
           >
             📤 Subir Grabación
           </button>
+          {/* NUEVA PESTAÑA */}
           <button
             className={activeTab === "performance" ? "tab-active" : "tab"}
             onClick={() => setActiveTab("performance")}
@@ -49,19 +50,19 @@ export default function App(){
             ⚡ Performance
           </button>
 
-          <button className={activeTab === 'security' ? 'active' : ''} onClick={() => setActiveTab('security')}>
-              🛡️ Security
-          </button>
+           {/* AQUÍ AGREGAMOS LA NUEVA PESTAÑA SEGURITY */}
+              <button className={activeTab === 'security' ? 'active' : ''} onClick={() => setActiveTab('security')}>
+                  🛡️ Security
+              </button>
 
-          {/* ========================================= */}
-          {/* CAMBIO 1: NUEVO BOTÓN PLAYWRIGHT BDD     */}
-          {/* ========================================= */}
-          <button
-            className={activeTab === "playwright" ? "tab-active" : "tab"}
-            onClick={() => setActiveTab("playwright")}
-          >
-            🎭 Playwright BDD POM
-          </button>
+           {/* AQUÍ AGREGAMOS LA NUEVA PESTAÑA PLAYWRIGHT BDD POM */}
+           <button
+             className={activeTab === "playwright" ? "tab-active" : "tab"}
+             onClick={() => setActiveTab("playwright")}
+           >
+             🎭 PlayWright BDD POM
+           </button>
+
         </nav>
 
         <div className="content">
@@ -69,68 +70,59 @@ export default function App(){
             {activeTab === "guide" && <RecorderGuide />}
             {activeTab === "recorder" && <RecorderPanel backend={BACKEND} />}
             {activeTab === "upload" && <RecordingUploader onLoad={r => setRecording(r)} />}
-            {activeTab === "performance" && <PerformanceAnalyzerSpanish />}
+            {activeTab === "performance" && <PerformanceAnalyzerSpanish />} {/* NUEVO COMPONENTE */}
             {activeTab === 'security' && (<SecurityScanner />)}
-
-            {/* ========================================= */}
-            {/* CAMBIO 2: RENDERIZAR COMPONENTE          */}
-            {/* ========================================= */}
-            {activeTab === "playwright" && <PlaywrightBDD />}
+            {activeTab === "playwright" && <PlaywrightBDDPOM />}
           </div>
 
-          {/* ========================================= */}
-          {/* CAMBIO 3: OCULTAR SIDEBAR EN PLAYWRIGHT  */}
-          {/* ========================================= */}
-          {activeTab !== "playwright" && (
-            <aside className="sidebar">
-              <div className="status-card">
-                <h3>📊 Estado Actual</h3>
-                <div className="status-info">
+          <aside className="sidebar">
+            <div className="status-card">
+              <h3>📊 Estado Actual</h3>
+              <div className="status-info">
+                <div className="status-item">
+                  <span className="label">Grabación cargada:</span>
+                  <span className={recording ? "value success" : "value error"}>
+                    {recording ? "✅ Sí" : "❌ No"}
+                  </span>
+                </div>
+                {recording && (
                   <div className="status-item">
-                    <span className="label">Grabación cargada:</span>
-                    <span className={recording ? "value success" : "value error"}>
-                      {recording ? "✅ Sí" : "❌ No"}
-                    </span>
+                    <span className="label">Flujos cargados:</span>
+                    <span className="value info">{recording.length}</span>
                   </div>
-                  {recording && (
-                    <div className="status-item">
-                      <span className="label">Flujos cargados:</span>
-                      <span className="value info">{recording.length}</span>
-                    </div>
-                  )}
-                  {job && (
-                    <div className="status-item">
-                      <span className="label">Proyecto generado:</span>
-                      <span className="value success">✅ Listo</span>
-                    </div>
-                  )}
-                </div>
+                )}
+                {job && (
+                  <div className="status-item">
+                    <span className="label">Proyecto generado:</span>
+                    <span className="value success">✅ Listo</span>
+                  </div>
+                )}
               </div>
+            </div>
 
-              <TransformPanel
-                backend={BACKEND}
-                recording={recording}
-                onJob={(j) => setJob(j)}
-              />
+            <TransformPanel
+              backend={BACKEND}
+              recording={recording}
+              onJob={(j) => setJob(j)}
+            />
 
-              {job && (
-                <div className="download-card">
-                  <h3>📦 Descargar Proyecto</h3>
-                  <a
-                    href={`${BACKEND}${job.download}`}
-                    className="download-button"
-                    target='_blank'
-                    rel="noreferrer"
-                  >
-                    ⬇️ Descargar ZIP del Proyecto
-                  </a>
-                  <p className="download-info">
-                    Proyecto base Serenity BDD + Screenplay generado automáticamente
-                  </p>
-                </div>
-              )}
-            </aside>
-          )}
+            {job && (
+              <div className="download-card">
+                <h3>📦 Descargar Proyecto</h3>
+                <a
+                  href={`${BACKEND}${job.download}`}
+                  className="download-button"
+                  target='_blank'
+                  rel="noreferrer"
+                >
+                  ⬇️ Descargar ZIP del Proyecto
+                </a>
+                <p className="download-info">
+                  Proyecto base Serenity BDD + Screenplay generado automáticamente
+                </p>
+              </div>
+            )}
+          </aside>
         </div>
       </div>
     </div>
